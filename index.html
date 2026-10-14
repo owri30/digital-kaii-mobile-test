@@ -125,25 +125,88 @@ window.KaiiReveal = {
   'use strict';
   const clamp=n=>Math.max(0,Math.min(1,n));
   const profiles={crossing:{brightness:.3,warmth:.2,saturation:.35,band:0},second:{brightness:.56,warmth:-.18,saturation:.23,band:2}};
+  // Colour graph: 12 hue bins weighted by how colourful each pixel is, plus one
+  // bin for grey/white/black. Light graph: 8 bins of pixel brightness.
+  // Sound only adds to a match: a scene whose colours fit can be captured even
+  // where the sound does not, so no anomaly depends on a rare soundscape.
+  const SOUND_FLOOR=.55;
+  const HUE_BINS=12,LIGHT_BINS=8,SOUND_BANDS=24,SOUND_LOW=60,SOUND_HIGH=8000;
+  function hueOf(r,g,b,max,chroma){
+    const h=max===r?((g-b)/chroma+6)%6:max===g?(b-r)/chroma+2:(r-g)/chroma+4;
+    return h/6;
+  }
   function imageFeatures(pixels){
     let r=0,g=0,b=0,s=0,n=pixels.length/4;
     if(!n)return null;
-    for(let i=0;i<pixels.length;i+=4){const a=pixels[i]/255,c=pixels[i+1]/255,d=pixels[i+2]/255,max=Math.max(a,c,d),min=Math.min(a,c,d);r+=a;g+=c;b+=d;s+=max?((max-min)/max):0;}
-    return {brightness:(r*.2126+g*.7152+b*.0722)/n,warmth:(r-b)/n,saturation:s/n};
+    const color=new Array(HUE_BINS+1).fill(0),light=new Array(LIGHT_BINS).fill(0);
+    for(let i=0;i<pixels.length;i+=4){
+      const a=pixels[i]/255,c=pixels[i+1]/255,d=pixels[i+2]/255,max=Math.max(a,c,d),min=Math.min(a,c,d),chroma=max-min;
+      r+=a;g+=c;b+=d;s+=max?(chroma/max):0;
+      // Dark pixels have unreliable hue, so their colour weight fades with brightness.
+      const colourful=Math.min(1,chroma/.35)*Math.min(1,max*2.5);
+      // Soft binning: a value between two bin centres is shared by both, so a
+      // slight shift in shade does not jump to an unrelated bin.
+      if(chroma>0){const h=hueOf(a,c,d,max,chroma)*HUE_BINS-.5,lo=Math.floor(h),f=h-lo;color[(lo+HUE_BINS)%HUE_BINS]+=colourful*(1-f);color[(lo+1)%HUE_BINS]+=colourful*f;}
+      color[HUE_BINS]+=1-colourful;
+      const l=Math.max(0,Math.min(LIGHT_BINS-1,(a*.2126+c*.7152+d*.0722)*LIGHT_BINS-.5)),ll=Math.min(LIGHT_BINS-2,Math.floor(l)),lf=l-ll;
+      light[ll]+=1-lf;light[ll+1]+=lf;
+    }
+    return {brightness:(r*.2126+g*.7152+b*.0722)/n,warmth:(r-b)/n,saturation:s/n,color:normalize(color),light:normalize(light)};
+  }
+  function normalize(values){const total=values.reduce((a,b)=>a+b,0);return values.map(v=>total>0?v/total:0);}
+  // Shared overlap of two graphs: 1 when identical, 0 when nothing in common.
+  function overlap(a,b){let sum=0;for(let i=0;i<a.length;i++)sum+=Math.min(a[i],b[i]||0);return sum;}
+  function chromatic(color){const hue=color.slice(0,HUE_BINS),amount=hue.reduce((a,b)=>a+b,0);return {hue:hue.map(v=>amount>0?v/amount:0),amount};}
+  const closeness=(value,width)=>Math.exp(-(((1-value)/width)**2));
+  function soundBands(spectrum,sampleRate,fftSize){
+    // Log-spaced bands, finer in the low range where hums and voices differ.
+    const bands=[];
+    for(let k=0;k<SOUND_BANDS;k++){
+      const lo=SOUND_LOW*Math.pow(SOUND_HIGH/SOUND_LOW,k/SOUND_BANDS),hi=SOUND_LOW*Math.pow(SOUND_HIGH/SOUND_LOW,(k+1)/SOUND_BANDS);
+      let sum=0,n=0,peak=0;
+      for(let i=1;i<spectrum.length;i++){const hz=i*sampleRate/fftSize;if(hz>=lo&&hz<hi){sum+=spectrum[i]/255;n++;}else if(n===0&&hz>=hi){peak=spectrum[i]/255;break;}}
+      bands.push(n?sum/n:peak);
+    }
+    return bands;
   }
   function audioFeatures(spectrum,sampleRate,fftSize){
+    const fine=soundBands(spectrum,sampleRate,fftSize);
+    const loudness=fine.reduce((a,b)=>a+b,0)/fine.length;
     const edges=[[70,350],[350,1800],[1800,8000]];
     const bands=edges.map(([lo,hi])=>{let sum=0,n=0;for(let i=1;i<spectrum.length;i++){const hz=i*sampleRate/fftSize;if(hz>=lo&&hz<hi){sum+=spectrum[i]/255;n++;}}return n?sum/n:0;});
     const total=bands.reduce((a,b)=>a+b,0);
     // A narrow tone is audible even if its average over a wide band is tiny.
     const peak=spectrum.reduce((highest,value)=>Math.max(highest,value),0)/255;
-    return {bands:bands.map(v=>total>0?v/total:0),energy:peak};
+    return {bands:bands.map(v=>total>0?v/total:0),energy:peak,sound:normalize(fine),loudness};
+  }
+  // Graph profiles: {color:[13], light:[8], sound:[24]|null, quiet:bool, width}.
+  function graphScore(p,visual,audio){
+    let total=0,weight=0;
+    if(visual&&visual.color){
+      // Most real scenes are largely grey, so the colours present, how much colour
+      // there is, and the light distribution are compared separately.
+      const a=chromatic(visual.color),b=chromatic(p.color);
+      const match=.35*overlap(a.hue,b.hue)+.25*(1-Math.min(1,Math.abs(a.amount-b.amount)/.5))+.4*overlap(visual.light,p.light);
+      total+=closeness(match,p.width||.25)*.65;weight+=.65;
+    }
+    if(audio&&audio.sound){
+      let fit;
+      if(p.quiet)fit=audio.loudness<.12?1:Math.exp(-(((audio.loudness-.12)/.08)**2));
+      else if(audio.energy<.025)fit=0;
+      else fit=p.sound?closeness(overlap(audio.sound,p.sound),.45):0;
+      const match=SOUND_FLOOR+(1-SOUND_FLOOR)*fit;
+      total+=match*.35;weight+=.35;
+    }
+    return weight?clamp(total/weight):0;
   }
   function score(key,visual,audio){
     const p=profiles[key]||profiles.crossing;
+    if(p.color)return graphScore(p,visual,audio);
     let total=0,weight=0;
-    if(visual){const distance=((visual.brightness-p.brightness)/.65)**2+((visual.warmth-p.warmth)/.65)**2+((visual.saturation-p.saturation)/.9)**2;total+=Math.exp(-distance)*.65;weight+=.65;}
-    if(audio){const match=audio.energy<.025?.2:clamp(.15+audio.bands[p.band]*1.1);total+=match*.35;weight+=.35;}
+    if(visual){const distance=((visual.brightness-p.brightness)/.45)**2+((visual.warmth-p.warmth)/.45)**2+((visual.saturation-p.saturation)/.62)**2;total+=Math.exp(-distance)*.65;weight+=.65;}
+    // Everyday sound is dominated by low frequencies, so a high-band ratio of
+    // 0.4 or more already counts as a full match.
+    if(audio){const fit=audio.energy<.025?0:clamp((audio.bands[p.band]-.1)/.3);total+=(SOUND_FLOOR+(1-SOUND_FLOOR)*fit)*.35;weight+=.35;}
     return weight?clamp(total/weight):0;
   }
   function createLock(random=Math.random){return {locked:false,hold:0,trace:0,required:7100+random()*7000};}
@@ -221,7 +284,13 @@ window.KaiiReveal = {
     // A small lead is insufficient to replace the current trace.
     return current&&scores[current]>=value-.08?current:best;
   }
-  const api={profiles,imageFeatures,audioFeatures,score,createLock,updateLock,candidateFor,imageChange,soundChange,imageMotion,createRadar,updateRadar};
+  // Average graphs from several reference images (or captures) into one profile.
+  function profileFrom(samples,{sound=null,quiet=false,width=.25}={}){
+    const color=new Array(HUE_BINS+1).fill(0),light=new Array(LIGHT_BINS).fill(0);
+    for(const f of samples){f.color.forEach((v,i)=>color[i]+=v);f.light.forEach((v,i)=>light[i]+=v);}
+    return {color:normalize(color),light:normalize(light),sound,quiet,width};
+  }
+  const api={HUE_BINS,LIGHT_BINS,SOUND_BANDS,overlap,profileFrom,graphScore,soundBands,profiles,imageFeatures,audioFeatures,score,createLock,updateLock,candidateFor,imageChange,soundChange,imageMotion,createRadar,updateRadar};
   if(typeof module!=='undefined')module.exports=api;else root.KaiiSensing=api;
 })(typeof window!=='undefined'?window:globalThis);
 </script><script>'use strict';
