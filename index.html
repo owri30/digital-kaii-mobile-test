@@ -50,6 +50,21 @@
 #start-media{display:block;width:100%;max-width:320px;margin:0 auto 10px;padding:17px 20px;background:#13221e;border:1px solid #a9df9eb0;color:#d8efcf;font-size:15px;letter-spacing:.2em;box-shadow:0 0 14px #a9df9e2e,inset 0 0 10px #a9df9e1a}
 #start-media:hover{background:#20352c}
 .start-note{margin:0 0 22px;font-size:13px;color:var(--muted);letter-spacing:.04em;text-align:center}
+/* 本番の画面：上部の操作、取扱説明書、カメラなしの入口、公演情報 */
+.top-controls{position:absolute;top:10px;right:12px;z-index:6;display:flex;gap:8px}
+.top-controls button{padding:6px 10px;font-size:13px;letter-spacing:.06em;background:#0b1815cc;border:1px solid #81998760}
+#search .start-lite{margin:-12px auto 24px;padding:6px 10px;background:transparent;border:0;color:#8caa97;font-size:13px;letter-spacing:.06em;text-decoration:underline;text-underline-offset:4px}
+.campaign-link{display:block;width:calc(100% - 60px);margin:0 auto 14px;padding:13px 10px;text-align:center;color:#d8efcf;border:1px solid #81998770;text-decoration:none;font-size:14px;letter-spacing:.12em}
+.manual{position:absolute;inset:0;z-index:20;overflow-y:auto;background:#07100dee;padding:56px 22px 40px}
+.manual-body{max-width:520px;margin:auto;font-size:14px;line-height:1.85;color:#cfe0d2}
+.manual-kicker{margin:0;font-size:12px;letter-spacing:.3em;color:var(--muted);text-align:center}
+.manual h2{margin:4px 0 22px;font-size:19px;font-weight:500;letter-spacing:.12em;text-align:center}
+.manual h3{margin:24px 0 6px;font-size:15px;font-weight:500;color:#e6f5dc;letter-spacing:.1em;border-bottom:1px solid var(--line);padding-bottom:4px}
+.manual p{margin:0 0 8px}.manual ol,.manual ul{margin:0 0 8px;padding-left:1.4em}.manual li{margin-bottom:6px}
+.close-manual{display:block;margin:28px auto 0;min-width:180px}
+html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:none!important}
+.brand{padding-top:58px}
+#instrument:not([data-phase=search]):not([data-phase=result]) .top-controls{display:none}
 </style>
 </head>
 <body>
@@ -58,10 +73,11 @@
     <video id="camera" autoplay playsinline muted hidden></video><div class="ambient"></div>
     <canvas id="digital-rain" aria-hidden="true" hidden></canvas>
     <div id="screen-flash" aria-hidden="true"></div>
+    <div class="top-controls"><button id="open-manual" type="button">取扱説明書</button><button id="sound-toggle" type="button" aria-pressed="true">音 ON</button></div>
     <div class="brand"><span>時相観測装置</span><h1>デジタル怪異測定器</h1></div>
     <section id="search" aria-label="サーチ">
       <div class="radar" id="radar"><div class="radar-grid"></div><div class="sweep"></div><div class="signal"></div><span class="crosshair"></span><span class="radar-label">SCANNING</span></div>
-      <p id="signal-label">探知中</p><p id="debug-numbers" class="debug-numbers" hidden></p><button id="start-media" class="start-media">カメラとマイクで探す</button><p id="start-note" class="start-note">映像・音声は端末の中だけで使い、保存・送信しません</p><button id="measure" disabled>測定開始</button>
+      <p id="signal-label">探知中</p><p id="debug-numbers" class="debug-numbers" hidden></p><button id="start-media" class="start-media">カメラとマイクで探す</button><p id="start-note" class="start-note">映像・音声は端末内だけで使い、保存・送信しません</p><button id="start-lite" type="button" class="start-lite">カメラを使わずに観測する</button><button id="measure" disabled>測定開始</button>
     </section>
     <section id="reading" hidden aria-label="観測中">
       <div class="reading-title">時相照合</div><div id="digits" aria-hidden="true">0000.00.00<br>00:00:00</div><div id="records" aria-label="確定した観測記録"></div><div id="phase-label" role="status">測定中</div>
@@ -70,22 +86,69 @@
     <section id="result" hidden aria-label="観測結果">
       <div class="result-art"><img id="art" alt=""><div class="art-caption"><span>観測された痕跡</span><h2 id="result-name"></h2></div><div class="record-overlay"><div class="result-meta"><span>観測記録</span><span id="count"></span></div><ol id="result-records"></ol></div><p id="campaign-note" hidden></p></div>
       <div class="description-control"><button id="read-description" aria-expanded="false" aria-controls="description-panel">怪異について読む</button><section id="description-panel" hidden aria-labelledby="description-title"><h3 id="description-title"></h3><p id="description-text"></p></section></div>
-      <div class="actions"><button id="save">画像を保存</button><button id="share">共有</button></div><button id="again" class="quiet">もう一度測定</button>
+      <div class="actions"><button id="save">画像を保存</button><button id="share">共有</button></div><a id="campaign-link" class="campaign-link" target="_blank" rel="noopener" hidden>公演情報・ご予約</a><button id="again" class="quiet">もう一度測定</button>
     </section>
     <p id="message" role="status"></p>
+    <section id="manual" class="manual" hidden aria-labelledby="manual-title">
+      <div class="manual-body">
+        <p class="manual-kicker">時相観測装置</p>
+        <h2 id="manual-title">デジタル怪異測定器 取扱説明書</h2>
+        <h3>本機について</h3>
+        <p>本機は、その場所に残された過去と未来の「時空の痕跡」を、景色の色・明るさと周囲の音から探知する観測装置です。いまそこに怪異がいるわけではありません。たぶん。</p>
+        <h3>観測のしかた</h3>
+        <ol>
+          <li>「カメラとマイクで探す」を押し、カメラとマイクの使用を許可してください。</li>
+          <li>スマホを構えたまま、ゆっくり景色を見回してください。じっとしていても痕跡は集まりません。場所や音が変われば、反応する怪異も変わります。</li>
+          <li>探索が満ちると、そのとき最も強く反応している怪異を捕捉します。「測定開始」で、観測日時が次々に確定していきます。</li>
+          <li>観測が終わると、怪異の姿が現れます。画像を保存して、観測記録を共有できます。</li>
+        </ol>
+        <h3>観測できる怪異</h3>
+        <p>反応する怪異は、場所の色合い、明るさ、音、そして時間帯によって変わります。ある時刻、ある夜、ある動作の中でしか観測されない怪異もいるらしい、と記録されています。</p>
+        <h3>カメラとマイクを使わない場合</h3>
+        <p>カメラとマイクを使わない場合、本機は「省電力観測モード」で動作します。レーダーを指でなぞると探索が進みますが、観測できるのは本機にあらかじめ記録された一部の怪異だけで、毎回決まった順番に現れます。特別な条件の下でしか現れない怪異は、この方法では決して観測できません。本機の真価は、あなたの目と耳の代わりとなるカメラとマイクがあってこそ発揮されます。</p>
+        <h3>映像と音について</h3>
+        <p>カメラの映像とマイクの音は、端末の中で色と音の傾向を数値にするためだけに使います。録画・録音・保存・送信は一切しません。</p>
+        <h3>安全のために</h3>
+        <ul>
+          <li>歩きながら画面を見続けないでください。</li>
+          <li>線路・踏切・道路・水辺・高い所・立入禁止の場所や、他人の敷地には入らないでください。</li>
+          <li>夜の観測は無理をせず、明るく安全な場所で。</li>
+          <li>人にカメラを向けないでください。音量にもご注意ください。</li>
+        </ul>
+        <h3>本機の正体</h3>
+        <p>本アプリは、や印企画の舞台『あれを見ろ！』（2026年11月25日〜29日）の宣伝のために作られたフィクションです。怪異の説明は伝承・都市伝説・創作にもとづくもので、観測日時はすべて架空です。</p>
+        <button id="close-manual" type="button" class="close-manual">閉じる</button>
+      </div>
+    </section>
   </main>
   <footer class="workbench footer"><button id="media" class="quiet">カメラ・マイクを使う</button><span id="media-status">背景は仮画像／映像・音声は保存・送信しません</span></footer>
   <div class="workbench demo-controls"><button id="demo" class="quiet">仮の環境で試す</button><label id="demo-environment" hidden>仮の環境 <select id="environment"></select></label></div>
   <script>'use strict';
 // 公演情報が決まったらここを設定する。日時はタイムゾーン付きISO形式。
 // ユーザー指定：2026/11/25–29公演、11/30 23:59（日本時間）に消去。
+// 2026-10-15 ユーザー指定：予約受付中なので、告知は今日から出す。予約ページのURLが決まったら url に入れる。
 window.KaiiCampaign = {
   settings: {
     label: 'や印企画「あれを見ろ！」',
     schedule: '2026.11.25–29',
-    startsAt: '2026-11-25T00:00:00+09:00',
-    endsAt: '2026-11-30T23:59:00+09:00'
+    venue: 'シアター711',
+    // 共有の文章に付けるアプリのURL（本番）。
+    siteUrl: 'https://owri30.github.io/digital-kaii/',
+    // 共有の文章に付けるハッシュタグ。「！」はタグが途中で切れるので入れない。
+    hashtags: ['デジタル怪異測定器','あれを見ろ','や印企画'],
+    startsAt: '2026-10-15T00:00:00+09:00',
+    endsAt: '2026-11-30T23:59:00+09:00',
+    url: 'https://yajirusi.corich.co/arewomiro/common'
   },
+  // 共有の文章（2026-10-15ユーザー指定）。公演情報は告知期間中だけ入れる。
+  shareText(name, now = new Date()) {
+    const {label,schedule,venue,siteUrl,hashtags=[]} = this.settings,lines = ['デジタル怪異測定器',`検出結果「${name}」`];
+    if(this.getLabel(now)) lines.push(`${label}　${schedule}${venue ? '・' + venue : ''}`);
+    if(siteUrl) lines.push(siteUrl);
+    if(hashtags.length) lines.push(hashtags.map(tag => '#' + tag).join(' '));
+    return lines.join('\n');
+  },
+  getUrl(now = new Date()) { return this.getLabel(now) && this.settings.url ? this.settings.url : ''; },
   getLabel(now = new Date()) {
     const {label,schedule,startsAt,endsAt} = this.settings;
     if(!schedule || !startsAt || !endsAt) return '';
@@ -342,6 +405,11 @@ let candidate=null,patternStrengths={};
 let exploring=false,activityUntil=0,previousPixels=null,previousAudio=null,lastVisualSample=0,lastAudioSample=0,demoDragging=false;
 let radarTrace=window.KaiiSensing.createRadar(),sceneMotion={x:0,y:0},demoPoint=null;
 let anomaly=false,anomalyTimer=null;
+// 本番版（data-release="1"）では確認用の操作を使わない。
+const RELEASE=document.documentElement.dataset.release==='1';
+// カメラを使わない「省電力観測モード」：決まった怪異を決まった順番で出す。特別条件の怪異は出ない。
+const LITE_ROUTINE=['kuchisake','hanako','jinmenken','crossing'];
+let liteMode=false,liteIndex=0;
 const sampleCanvas=document.createElement('canvas');sampleCanvas.width=64;sampleCanvas.height=48;
 const sampleContext=sampleCanvas.getContext('2d',{willReadFrequently:true});
 let screenFlashAnimation = null;
@@ -349,7 +417,7 @@ let rainFrame = null, rainResize = null;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const format = value => value.replace('T',' ').replaceAll('-','.');
 const sleep = ms => new Promise(resolve => setTimeout(resolve,ms));
-function refreshCampaign() { const label=window.KaiiCampaign.getLabel(); $('campaign-note').textContent=label; $('campaign-note').hidden=!label; }
+function refreshCampaign() { const label=window.KaiiCampaign.getLabel(),url=window.KaiiCampaign.getUrl(); $('campaign-note').textContent=label; $('campaign-note').hidden=!label; $('campaign-link').hidden=!url; if(url)$('campaign-link').href=url; }
 function setPhase(value) { phase = value; $('instrument').dataset.phase = value; }
 function stopDigitalRain() {
   if(rainFrame!==null)cancelAnimationFrame(rainFrame);
@@ -424,7 +492,7 @@ function senseEnvironment(){
   if(document.hidden){clearReaction();return;}
   let visual=null,audio=null;
   if(demoMode){
-    ({visual,audio}=demoEnvironment($('environment').value));
+    ({visual,audio}=demoEnvironment(liteMode?LITE_ROUTINE[liteIndex%LITE_ROUTINE.length]:$('environment').value));
   }else{
     const video=$('camera');
     if(mediaStream?.getVideoTracks().some(t=>t.readyState==='live'&&!t.muted)&&video.readyState>=2){
@@ -442,7 +510,7 @@ function senseEnvironment(){
   exploring=now<activityUntil;
   if(!exploring&&!lockState.locked){paintReaction();return;}
   const smoothing=1-Math.exp(-Math.min(dt,250)/230),mode=$('specimen').value;
-  const keys=mode==='auto'?Object.keys(scenes):[mode],clock=new Date();
+  const keys=liteMode?[LITE_ROUTINE[liteIndex%LITE_ROUTINE.length]]:mode==='auto'?Object.keys(scenes):[mode],clock=new Date();
   for(const key of keys){
     const scene=scenes[key];
     // 4時44分は時刻だけで成立する。確認用に手動指定した時は時刻を問わない。
@@ -479,7 +547,13 @@ function demoEnvironment(key){
   return {visual:{brightness:.5,warmth:0,saturation:.2,color:p.color,light:p.light},audio};
 }
 // 探し始める入口は目立つ場所に置き、カメラ・マイクを使っている間や仮の環境では隠す。
-function syncStartButton(){const idle=!mediaStream&&!demoMode;$('start-media').hidden=!idle;$('start-note').hidden=!idle;}
+function syncStartButton(){
+  const idle=!mediaStream&&!demoMode;
+  $('start-media').hidden=!idle;$('start-lite').hidden=!idle;
+  $('start-note').hidden=!(idle||liteMode);
+  if(liteMode)$('start-note').textContent='省電力観測モード：レーダーを指でなぞって探索';
+}
+function setSoundLabel(){$('sound-toggle').textContent=$('sound').checked?'音 ON':'音 OFF';$('sound-toggle').setAttribute('aria-pressed',String($('sound').checked));}
 function resumeAudio() {
   if(!$('sound').checked) return;
   try { audioContext ||= new (window.AudioContext || window.webkitAudioContext)(); audioContext.resume().catch(()=>{}); } catch { $('sound').checked=false; }
@@ -747,7 +821,7 @@ async function morphArt(image,token,scene) {
 }
 async function begin() {
   if(phase!=='search'||$('measure').disabled||!lockState.locked||!candidate)return;
-  selected=scenes[candidate];
+  selected=scenes[candidate];if(liteMode)liteIndex++;
   resumeAudio(); stopEffects(); clearTimeout(soundTimer); const token=++generation, scene=selected; const imagePromise=imageFor(scene); imagePromise.catch(()=>{});
   rows=createRows(scene); setPhase('measure'); $('search').hidden=true; $('reading').hidden=false;
   startDigitalRain(token);if(anomaly)scheduleSound();
@@ -789,8 +863,14 @@ async function save(share=false) {
   if(phase!=='result')return;
   const token=generation,name=selected.name; $('save').disabled=true;$('share').disabled=true;
   try {const blob=await resultBlob();if(token!==generation)return;const file=new File([blob],`${name}-観測結果.png`,{type:'image/png'});
-    if(share&&navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:name});
-    else {download(blob,name);$('message').textContent=share?'画像を保存しました。SNSへ添付できます。':'観測記録を含む画像を保存しました。';}
+    const text=window.KaiiCampaign.shareText(name);
+    if(share&&navigator.canShare?.({files:[file]}))await navigator.share({files:[file],title:'デジタル怪異測定器',text});
+    else {
+      download(blob,name);
+      // 共有に対応していない環境では、共有の文章をクリップボードに入れて貼り付けやすくする。
+      const copied=share&&await navigator.clipboard?.writeText(text).then(()=>true,()=>false);
+      $('message').textContent=share?(copied?'画像を保存し、共有の文章をコピーしました。SNSに貼り付けて使えます。':'画像を保存しました。SNSへ添付できます。'):'観測記録を含む画像を保存しました。';
+    }
   } catch(error) {if(error.name!=='AbortError')$('message').textContent=error.message;}
   finally{$('save').disabled=false;$('share').disabled=false;}
 }
@@ -798,13 +878,24 @@ $('read-description').addEventListener('click',()=>{const panel=$('description-p
 for(const [key,scene] of Object.entries(scenes))$('specimen').append(new Option(scene.name,key));
 for(const key of Object.keys(scenes))if(window.KaiiSensing.profiles[key])$('environment').append(new Option(scenes[key].name+'の場所',key));
 $('environment').append(new Option('明るい無音（何も出ない）','neutral'));
-$('start-media').addEventListener('click',()=>$('media').click());
+$('start-media').addEventListener('click',()=>{liteMode=false;$('media').click();});
+$('start-lite').addEventListener('click',()=>{
+  if(mediaStream)releaseMedia();
+  liteMode=true;demoMode=true;$('demo-environment').hidden=true;
+  $('media-status').textContent='省電力観測モード／レーダーをなぞって探索';clearReaction();resumeAudio();syncStartButton();
+});
+$('open-manual').addEventListener('click',()=>{$('manual').hidden=false;$('manual').scrollTop=0;});
+$('close-manual').addEventListener('click',()=>{$('manual').hidden=true;});
+$('sound-toggle').addEventListener('click',()=>{$('sound').checked=!$('sound').checked;$('sound').dispatchEvent(new Event('change'));setSoundLabel();});
+$('sound').addEventListener('change',setSoundLabel);
+if(RELEASE){$('specimen').value='auto';$('special-test').checked=false;$('show-numbers').checked=false;}
 // 許可の拒否などの案内は、目立つ入口の下にも出す。
 new MutationObserver(()=>{if(!mediaStream)$('start-note').textContent=$('media-status').textContent;}).observe($('media-status'),{childList:true,characterData:true,subtree:true});
 $('measure').addEventListener('click',begin);$('again').addEventListener('click',reset);$('specimen').addEventListener('change',reset);
 $('save').addEventListener('click',()=>save());$('share').addEventListener('click',()=>save(true));
 $('sound').addEventListener('change',()=>{if(!$('sound').checked)stopEffects();resumeAudio();scheduleSound();});
 $('demo').addEventListener('click',()=>{
+  liteMode=false;
   if(phase!=='search')return;
   demoMode=!demoMode;
   if(demoMode)releaseMedia();
@@ -821,7 +912,7 @@ $('media').addEventListener('click',async()=>{
   if(mediaStream){releaseMedia();$('media-status').textContent='背景は仮画像／仮の環境でも試せます';return;}
   if(!navigator.mediaDevices?.getUserMedia){$('media-status').textContent='カメラ・マイクを利用できません。仮の環境で試せます。';return;}
   $('media').disabled=true;const request=++mediaRequest;
-  demoMode=false;$('demo-environment').hidden=true;$('demo').textContent='仮の環境で試す';clearReaction();resumeAudio();
+  demoMode=false;liteMode=false;$('demo-environment').hidden=true;$('demo').textContent='仮の環境で試す';clearReaction();resumeAudio();
   try{sensingContext=new (window.AudioContext||window.webkitAudioContext)();sensingContext.resume().catch(()=>{});}catch{}
   try{
     const captures=await Promise.allSettled([
