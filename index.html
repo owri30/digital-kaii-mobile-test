@@ -142,7 +142,7 @@ window.KaiiCampaign = {
   },
   // 共有の文章（2026-10-15ユーザー指定）。公演情報は告知期間中だけ入れる。
   shareText(name, now = new Date()) {
-    const {label,schedule,venue,siteUrl,hashtags=[]} = this.settings,lines = ['デジタル怪異測定器',`検出結果「${name}」`];
+    const {label,schedule,venue,siteUrl,hashtags=[]} = this.settings,lines = ['デジタル怪異測定器',`検出怪異「${name}」`];
     if(this.getLabel(now)) lines.push(`${label}　${schedule}${venue ? '・' + venue : ''}`);
     if(siteUrl) lines.push(siteUrl);
     if(hashtags.length) lines.push(hashtags.map(tag => '#' + tag).join(' '));
