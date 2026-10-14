@@ -558,7 +558,9 @@ function resumeAudio() {
   if(!$('sound').checked) return;
   try { audioContext ||= new (window.AudioContext || window.webkitAudioContext)(); audioContext.resume().catch(()=>{}); } catch { $('sound').checked=false; }
 }
-function clickSound() {
+// 段階ごとの平均間隔（ミリ秒）と、連打になる確率。最後は捕捉中。
+const GEIGER_MEAN=[1100,620,320,150,75,42],GEIGER_BURST=[0,.05,.18,.35,.55,.7];
+function clickSound(level=.5) {
   if(!audioContext || audioContext.state!=='running' || !$('sound').checked) return;
   // A very short noise discharge sounds like a counter pulse, rather than a beep.
   if(!clickBuffers)clickBuffers=Array.from({length:4},()=>{
@@ -568,8 +570,8 @@ function clickSound() {
   });
   const pulse=audioContext.createBufferSource(),filter=audioContext.createBiquadFilter(),gain=audioContext.createGain(),now=audioContext.currentTime;
   pulse.buffer=clickBuffers[Math.floor(Math.random()*clickBuffers.length)];
-  filter.type='bandpass';filter.frequency.value=1800+Math.random()*1600;filter.Q.value=.65;
-  gain.gain.setValueAtTime(.42+Math.random()*.12,now);gain.gain.exponentialRampToValueAtTime(.0001,now+.022);
+  filter.type='bandpass';filter.frequency.value=1500+level*1800+Math.random()*1400;filter.Q.value=.65;
+  gain.gain.setValueAtTime(.26+level*.42+Math.random()*.1,now);gain.gain.exponentialRampToValueAtTime(.0001,now+.022);
   pulse.connect(filter);filter.connect(gain);gain.connect(audioContext.destination);
   pulse.onended=()=>{pulse.disconnect();filter.disconnect();gain.disconnect();};
   pulse.start(now);pulse.stop(now+.025);
@@ -662,10 +664,18 @@ function hymnSound(){
 function scheduleSound() {
   clearTimeout(soundTimer);
   if(document.hidden||(phase!=='search'&&!(anomaly&&(phase==='measure'||phase==='sort')))) return;
-  if(anomaly){clickSound();soundTimer=setTimeout(scheduleSound,Math.random()<.82?14+Math.random()*50:180+Math.random()*520);return;}
-  if(displayedStrength>.08&&(exploring||lockState.locked))clickSound();
-  const mean=1200*Math.pow(1-displayedStrength,2)+55;
-  const interval=Math.max(35,Math.min(1800,-Math.log(Math.max(.001,1-Math.random()))*mean));
+  if(anomaly){clickSound(1);soundTimer=setTimeout(scheduleSound,Math.random()<.82?14+Math.random()*50:180+Math.random()*520);return;}
+  // 探索の進み具合で5段階に激しくなり、捕捉で最大になる（2026-10-15ユーザー指定）。
+  // 段階が上がるほど間隔が詰まり、連打が増え、音も大きく鋭くなる。
+  let mean=1500;
+  if(displayedStrength>.08&&(exploring||lockState.locked)){
+    const level=lockState.locked?1:Math.min(1,lockState.trace/lockState.required);
+    const stage=lockState.locked?5:Math.min(4,Math.floor(level*5));
+    const burst=Math.random()<GEIGER_BURST[stage]?2+Math.floor(Math.random()*(stage+1)):1;
+    for(let i=0;i<burst;i++)setTimeout(()=>clickSound(level),i*(10+Math.random()*22));
+    mean=GEIGER_MEAN[stage]*(1.25-.5*displayedStrength);
+  }
+  const interval=Math.max(20,Math.min(2200,-Math.log(Math.max(.001,1-Math.random()))*mean));
   soundTimer=setTimeout(scheduleSound,interval);
 }
 function reset() {
