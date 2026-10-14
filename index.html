@@ -46,10 +46,11 @@
 #instrument.anomaly #digital-rain{animation:rain-glitch 1.3s steps(1) infinite}
 @keyframes digits-glitch{0%{translate:0 0;scale:1;opacity:1}17%{translate:-6px 2px;scale:1.04 .96;opacity:.75}34%{translate:4px -3px;scale:.97 1.05;opacity:1}51%{translate:0 0;scale:1;opacity:.35}68%{translate:9px 1px;scale:1.08 1;opacity:1}85%{translate:-3px -4px;scale:1;opacity:.85}}
 @keyframes rain-glitch{0%,30%,34%,70%,73%,100%{translate:0 0;opacity:1}31%{translate:14px 0;opacity:.5}32%{translate:-10px 6px;opacity:1}33%{translate:0 -12px;opacity:.7}71%{translate:-18px 0;opacity:.6}72%{translate:8px 10px;opacity:1}}
+.debug-numbers{margin:6px 0 0;font:11px/1.4 Consolas,monospace;color:#9fbfa9;text-align:center;letter-spacing:0}
 </style>
 </head>
 <body>
-  <header class="workbench"><span>演出試作 <small>探知・演出試作／絵は確認中</small></span><label><span class="sr-only">探知モード</span><select id="specimen"><option value="auto">自動で探す</option></select></label><label class="sound" title="確認用：捕捉した怪異を特別条件として扱う"><input type="checkbox" id="special-test">特別演出</label><label class="sound"><input type="checkbox" id="sound" checked>音</label></header>
+  <header class="workbench"><span>演出試作 <small>探知・演出試作／絵は確認中</small></span><label><span class="sr-only">探知モード</span><select id="specimen"><option value="auto">自動で探す</option></select></label><label class="sound" title="確認用：候補と一致度を表示"><input type="checkbox" id="show-numbers">数値</label><label class="sound" title="確認用：捕捉した怪異を特別条件として扱う"><input type="checkbox" id="special-test">特別演出</label><label class="sound"><input type="checkbox" id="sound" checked>音</label></header>
   <main id="instrument" data-phase="search">
     <video id="camera" autoplay playsinline muted hidden></video><div class="ambient"></div>
     <canvas id="digital-rain" aria-hidden="true" hidden></canvas>
@@ -57,7 +58,7 @@
     <div class="brand"><span>時相観測装置</span><h1>デジタル怪異測定器</h1></div>
     <section id="search" aria-label="サーチ">
       <div class="radar" id="radar"><div class="radar-grid"></div><div class="sweep"></div><div class="signal"></div><span class="crosshair"></span><span class="radar-label">SCANNING</span></div>
-      <p id="signal-label">探知中</p><button id="measure" disabled>測定開始</button>
+      <p id="signal-label">探知中</p><p id="debug-numbers" class="debug-numbers" hidden></p><button id="measure" disabled>測定開始</button>
     </section>
     <section id="reading" hidden aria-label="観測中">
       <div class="reading-title">時相照合</div><div id="digits" aria-hidden="true">0000.00.00<br>00:00:00</div><div id="records" aria-label="確定した観測記録"></div><div id="phase-label" role="status">測定中</div>
@@ -131,16 +132,16 @@ window.KaiiReveal = {
   const clamp=n=>Math.max(0,Math.min(1,n));
   // 参考写真から作った出現条件。4時44分は時刻判定なので条件なし。
   const profiles={
-    kuchisake:{color:[0.19,0.036,0.003,0.001,0.001,0.003,0.044,0.024,0.002,0.001,0.002,0.026,0.668],light:[0.04,0.164,0.202,0.219,0.195,0.11,0.06,0.009],sound:[0,0,0,0,0,0.002,0.005,0.015,0.037,0.073,0.119,0.16,0.176,0.16,0.119,0.073,0.037,0.015,0.005,0.002,0,0,0,0],quiet:false,width:0.25},
-    hasshaku:{color:[0.025,0.049,0.12,0.109,0.012,0.009,0.04,0.019,0,0,0,0,0.618],light:[0.022,0.112,0.183,0.241,0.15,0.037,0.044,0.211],sound:[0,0,0,0,0,0,0,0,0,0,0,0,0.002,0.005,0.016,0.038,0.075,0.122,0.164,0.18,0.164,0.122,0.075,0.038],quiet:false,width:0.25},
-    kunekune:{color:[0.003,0.079,0.236,0.061,0.003,0.006,0.089,0.132,0,0,0,0,0.391],light:[0.085,0.084,0.13,0.203,0.21,0.161,0.054,0.074],sound:null,quiet:true,width:0.25},
-    kisaragi:{color:[0.016,0.011,0.002,0,0,0.002,0.008,0.009,0.002,0.001,0.001,0.01,0.939],light:[0.501,0.233,0.108,0.071,0.049,0.032,0.006,0],sound:[0.078,0.127,0.17,0.187,0.17,0.127,0.078,0.039,0.016,0.006,0.002,0,0,0,0,0,0,0,0,0,0,0,0,0],quiet:false,width:0.25},
-    sarasara:{color:[0.075,0.016,0.004,0.001,0.001,0.003,0.009,0.014,0.005,0.01,0.024,0.184,0.654],light:[0.567,0.174,0.107,0.07,0.047,0.021,0.008,0.006],sound:[0.078,0.127,0.17,0.187,0.17,0.127,0.078,0.039,0.016,0.006,0.002,0,0,0,0,0,0,0,0,0,0,0,0,0],quiet:false,width:0.25},
-    hanako:{color:[0.081,0.063,0.009,0.002,0.004,0.013,0.013,0.016,0.003,0,0,0.002,0.794],light:[0.1,0.13,0.161,0.197,0.181,0.117,0.067,0.048],sound:[0,0,0,0,0,0.002,0.005,0.015,0.037,0.073,0.119,0.16,0.176,0.16,0.119,0.073,0.037,0.015,0.005,0.002,0,0,0,0],quiet:false,width:0.25},
-    jinmenken:{color:[0.087,0.093,0.017,0.004,0.003,0.006,0.024,0.021,0.002,0.001,0.003,0.024,0.716],light:[0.072,0.131,0.157,0.186,0.17,0.105,0.082,0.098],sound:[0.011,0.015,0.019,0.025,0.03,0.036,0.043,0.049,0.055,0.06,0.064,0.066,0.067,0.066,0.064,0.06,0.055,0.049,0.043,0.036,0.03,0.025,0.019,0.015],quiet:false,width:0.25},
-    turbo:{color:[0.008,0.077,0.132,0.024,0.007,0.008,0.02,0.015,0,0,0,0.001,0.708],light:[0.064,0.117,0.162,0.252,0.242,0.116,0.033,0.015],sound:[0.078,0.127,0.17,0.187,0.17,0.127,0.078,0.039,0.016,0.006,0.002,0,0,0,0,0,0,0,0,0,0,0,0,0],quiet:false,width:0.25},
-    crossing:{color:[0.062,0.022,0.001,0,0,0.001,0.023,0.127,0.014,0.001,0.001,0.009,0.74],light:[0.46,0.252,0.117,0.081,0.073,0.011,0.005,0.002],sound:[0.078,0.127,0.17,0.187,0.17,0.127,0.078,0.039,0.016,0.006,0.002,0,0,0,0,0,0,0,0,0,0,0,0,0],quiet:false,width:0.25},
-    second:{color:[0.064,0.047,0.006,0.005,0.007,0.005,0.006,0.01,0.003,0.004,0.004,0.006,0.832],light:[0.039,0.109,0.136,0.268,0.208,0.103,0.086,0.052],sound:[0,0,0,0,0,0,0,0,0,0,0,0,0.002,0.005,0.016,0.038,0.075,0.122,0.164,0.18,0.164,0.122,0.075,0.038],quiet:false,width:0.25}
+    kuchisake:{color:[0.19,0.036,0.003,0.001,0.001,0.003,0.044,0.024,0.002,0.001,0.002,0.026,0.668],light:[0.04,0.164,0.202,0.219,0.195,0.11,0.06,0.009],sound:[0,0,0,0,0,0.002,0.005,0.015,0.037,0.073,0.119,0.16,0.176,0.16,0.119,0.073,0.037,0.015,0.005,0.002,0,0,0,0],quiet:false,width:0.55},
+    hasshaku:{color:[0.025,0.049,0.12,0.109,0.012,0.009,0.04,0.019,0,0,0,0,0.618],light:[0.022,0.112,0.183,0.241,0.15,0.037,0.044,0.211],sound:[0,0,0,0,0,0,0,0,0,0,0,0,0.002,0.005,0.016,0.038,0.075,0.122,0.164,0.18,0.164,0.122,0.075,0.038],quiet:false,width:0.55},
+    kunekune:{color:[0.003,0.079,0.236,0.061,0.003,0.006,0.089,0.132,0,0,0,0,0.391],light:[0.085,0.084,0.13,0.203,0.21,0.161,0.054,0.074],sound:null,quiet:true,width:0.55},
+    kisaragi:{color:[0.016,0.011,0.002,0,0,0.002,0.008,0.009,0.002,0.001,0.001,0.01,0.939],light:[0.501,0.233,0.108,0.071,0.049,0.032,0.006,0],sound:[0.078,0.127,0.17,0.187,0.17,0.127,0.078,0.039,0.016,0.006,0.002,0,0,0,0,0,0,0,0,0,0,0,0,0],quiet:false,width:0.55},
+    sarasara:{color:[0.075,0.016,0.004,0.001,0.001,0.003,0.009,0.014,0.005,0.01,0.024,0.184,0.654],light:[0.567,0.174,0.107,0.07,0.047,0.021,0.008,0.006],sound:[0.078,0.127,0.17,0.187,0.17,0.127,0.078,0.039,0.016,0.006,0.002,0,0,0,0,0,0,0,0,0,0,0,0,0],quiet:false,width:0.55},
+    hanako:{color:[0.081,0.063,0.009,0.002,0.004,0.013,0.013,0.016,0.003,0,0,0.002,0.794],light:[0.1,0.13,0.161,0.197,0.181,0.117,0.067,0.048],sound:[0,0,0,0,0,0.002,0.005,0.015,0.037,0.073,0.119,0.16,0.176,0.16,0.119,0.073,0.037,0.015,0.005,0.002,0,0,0,0],quiet:false,width:0.55},
+    jinmenken:{color:[0.087,0.093,0.017,0.004,0.003,0.006,0.024,0.021,0.002,0.001,0.003,0.024,0.716],light:[0.072,0.131,0.157,0.186,0.17,0.105,0.082,0.098],sound:[0.011,0.015,0.019,0.025,0.03,0.036,0.043,0.049,0.055,0.06,0.064,0.066,0.067,0.066,0.064,0.06,0.055,0.049,0.043,0.036,0.03,0.025,0.019,0.015],quiet:false,width:0.55},
+    turbo:{color:[0.008,0.077,0.132,0.024,0.007,0.008,0.02,0.015,0,0,0,0.001,0.708],light:[0.064,0.117,0.162,0.252,0.242,0.116,0.033,0.015],sound:[0.078,0.127,0.17,0.187,0.17,0.127,0.078,0.039,0.016,0.006,0.002,0,0,0,0,0,0,0,0,0,0,0,0,0],quiet:false,width:0.55},
+    crossing:{color:[0.062,0.022,0.001,0,0,0.001,0.023,0.127,0.014,0.001,0.001,0.009,0.74],light:[0.46,0.252,0.117,0.081,0.073,0.011,0.005,0.002],sound:[0.078,0.127,0.17,0.187,0.17,0.127,0.078,0.039,0.016,0.006,0.002,0,0,0,0,0,0,0,0,0,0,0,0,0],quiet:false,width:0.55},
+    second:{color:[0.064,0.047,0.006,0.005,0.007,0.005,0.006,0.01,0.003,0.004,0.004,0.006,0.832],light:[0.039,0.109,0.136,0.268,0.208,0.103,0.086,0.052],sound:[0,0,0,0,0,0,0,0,0,0,0,0,0.002,0.005,0.016,0.038,0.075,0.122,0.164,0.18,0.164,0.122,0.075,0.038],quiet:false,width:0.55}
   };
   // Colour graph: 12 hue bins weighted by how colourful each pixel is, plus one
   // bin for grey/white/black. Light graph: 8 bins of pixel brightness.
@@ -204,7 +205,7 @@ window.KaiiReveal = {
       // there is, and the light distribution are compared separately.
       const a=chromatic(visual.color),b=chromatic(p.color);
       const match=.35*overlap(a.hue,b.hue)+.25*(1-Math.min(1,Math.abs(a.amount-b.amount)/.5))+.4*overlap(visual.light,p.light);
-      total+=closeness(match,p.width||.25)*.65;weight+=.65;
+      total+=closeness(match,p.width||.55)*.65;weight+=.65;
     }
     if(audio&&audio.sound){
       let fit;
@@ -282,15 +283,20 @@ window.KaiiReveal = {
     state.x=Math.cos(angle)*radius;state.y=Math.sin(angle)*radius;
     return state;
   }
+  // 探索量が満タンになった瞬間に、その時いちばん強い候補へ特定する（2026-10-15ユーザー指定）。
+  // 何かしら反応（0.3以上）があれば探索は進み、強いほど速い。止まっている間は進まない。
   function updateLock(state,strength,dt,exploring=true){
     const elapsed=Math.min(250,Math.max(0,dt));
     if(!state.locked){
       if(!exploring)return false;
-      state.trace=Math.max(0,state.trace+elapsed*(strength>=.55?(strength-.55)/.45:-.35));
-      state.trace=Math.min(state.required,state.trace);
-      state.hold=strength>=.72&&state.trace>=state.required?state.hold+elapsed:0;
-      if(state.hold>=900){state.locked=true;state.hold=0;}
-    }else {state.hold=strength<.53?state.hold+elapsed:0;if(state.hold>=600){state.locked=false;state.hold=0;state.trace=0;}}
+      const rate=strength>=.3?.25+.75*clamp((strength-.3)/.6):-.35;
+      state.trace=Math.min(state.required,Math.max(0,state.trace+elapsed*rate));
+      if(state.trace>=state.required){state.locked=true;state.hold=0;}
+    }else {
+      // 特定後は、反応がほぼ消えた状態が続いた時だけ解除する。
+      state.hold=strength<.2?state.hold+elapsed:0;
+      if(state.hold>=1500){state.locked=false;state.hold=0;state.trace=0;}
+    }
     return state.locked;
   }
   function candidateFor(scores,current,locked){
@@ -302,7 +308,7 @@ window.KaiiReveal = {
     return current&&scores[current]>=value-.08?current:best;
   }
   // Average graphs from several reference images (or captures) into one profile.
-  function profileFrom(samples,{sound=null,quiet=false,width=.25}={}){
+  function profileFrom(samples,{sound=null,quiet=false,width=.55}={}){
     const color=new Array(HUE_BINS+1).fill(0),light=new Array(LIGHT_BINS).fill(0);
     for(const f of samples){f.color.forEach((v,i)=>color[i]+=v);f.light.forEach((v,i)=>light[i]+=v);}
     return {color:normalize(color),light:normalize(light),sound,quiet,width};
@@ -404,6 +410,8 @@ function paintReaction(){
   $('search').classList.toggle('locked',locked);$('measure').disabled=!locked;
   $('signal-label').textContent=locked?'反応捕捉':displayedStrength>.55?'反応増大':displayedStrength>.2?'微弱反応':'探知中';
   document.querySelector('.radar-label').textContent=locked?'LOCKED':'SCANNING';
+  if($('show-numbers').checked){const top=Object.entries(patternStrengths).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>scenes[k].name+' '+v.toFixed(2)).join('／');$('debug-numbers').textContent=(top||'入力待ち')+'　探索 '+Math.round(100*Math.min(1,lockState.trace/lockState.required))+'%';}
+  $('debug-numbers').hidden=!$('show-numbers').checked;
   if(anomaly){$('signal-label').textContent=Math.random()<.6?'反応異常':'異常反応';document.querySelector('.radar-label').textContent=['LOCKED','ERROR','??????','L0CK3D','OVERLOAD'][Math.floor(Math.random()*5)];}
 }
 function senseEnvironment(){
@@ -438,7 +446,12 @@ function senseEnvironment(){
     patternStrengths[key]=scene.condition==='time444'?match:(patternStrengths[key]||0)+(match-(patternStrengths[key]||0))*smoothing;
   }
   const next=window.KaiiSensing.candidateFor(patternStrengths,candidate,lockState.locked);
-  if(next!==candidate){lockState=window.KaiiSensing.createLock();radarTrace=window.KaiiSensing.createRadar();candidate=next;if(scenes[next]?.condition==='time444')lockState.required=Math.min(lockState.required,4000);}
+  if(next!==candidate){
+    // 探した量は利用者の行動なので、候補が入れ替わってもそのまま引き継ぐ（揺れのたびにやり直さない）。
+    const kept=lockState.trace;lockState=window.KaiiSensing.createLock();lockState.trace=Math.min(lockState.required,kept);
+    if(!candidate||!next)radarTrace=window.KaiiSensing.createRadar();
+    candidate=next;if(scenes[next]?.condition==='time444')lockState.required=Math.min(lockState.required,4000);
+  }
   strength=candidate?patternStrengths[candidate]:Math.max(0,...Object.values(patternStrengths));
   const wasLocked=lockState.locked;
   window.KaiiSensing.updateLock(lockState,strength,dt,exploring);
