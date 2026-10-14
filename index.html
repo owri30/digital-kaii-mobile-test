@@ -25,6 +25,7 @@
 @keyframes lock-dot{0%{transform:scale(1);box-shadow:0 0 12px 4px #c8ffbd80}20%{transform:scale(2.6);background:#fffef1;box-shadow:0 0 18px 8px #d9ffcae0,0 0 40px 16px #b2f5ac70}100%{transform:scale(1);box-shadow:0 0 24px 10px #a7d99c55}}
 @keyframes lock-radar{0%{border-color:#f0ffdb;box-shadow:0 0 10px #cfffbd70,inset 0 0 10px #cfffbd40}20%{border-color:#f6ffe8;box-shadow:0 0 46px #cfffbd90,inset 0 0 38px #cfffbd60}100%{border-color:#b1d3b4;box-shadow:0 0 28px #75be8f38,inset 0 0 0 #cfffbd00}}
 @keyframes lock-button{0%{background:#1b3427;box-shadow:0 0 10px #cfffbd60}20%{background:#d3f5bd;color:#102016;border-color:#f4ffe8;box-shadow:0 0 32px 6px #c4f5ac80}100%{background:#13221e;color:#efffe4;box-shadow:0 0 15px #a9df9e28}}
+#search:not(.exploring) .sweep{animation-play-state:paused}#radar{touch-action:none}
 </style>
 </head>
 <body>
@@ -124,10 +125,28 @@ window.KaiiReveal = {
     if(audio){const match=audio.energy<.025?.2:clamp(.15+audio.bands[p.band]*1.1);total+=match*.35;weight+=.35;}
     return weight?clamp(total/weight):0;
   }
-  function updateLock(state,strength,dt){
+  function createLock(random=Math.random){return {locked:false,hold:0,trace:0,required:7100+random()*7000};}
+  function imageChange(previous,current){
+    if(!previous||previous.length!==current.length||!current.length)return 0;
+    let drift=0,change=0,chroma=0,n=current.length/4;
+    for(let i=0;i<current.length;i+=4){drift+=(current[i]+current[i+1]+current[i+2]-previous[i]-previous[i+1]-previous[i+2])/3;chroma+=current[i]-current[i+2]-previous[i]+previous[i+2];}
+    drift/=n;
+    for(let i=0;i<current.length;i+=4)change+=Math.abs((current[i]+current[i+1]+current[i+2]-previous[i]-previous[i+1]-previous[i+2])/3-drift);
+    return Math.max(change/n/255,Math.abs(chroma/n/255));
+  }
+  function soundChange(previous,current){
+    if(!previous||!current||current.energy<.025)return 0;
+    return Math.max(...current.bands.map((value,i)=>Math.abs(value-previous.bands[i])));
+  }
+  function updateLock(state,strength,dt,exploring=true){
     const elapsed=Math.min(250,Math.max(0,dt));
-    if(!state.locked){state.hold=strength>=.72?state.hold+elapsed:0;if(state.hold>=900){state.locked=true;state.hold=0;}}
-    else {state.hold=strength<.53?state.hold+elapsed:0;if(state.hold>=600){state.locked=false;state.hold=0;}}
+    if(!state.locked){
+      if(!exploring)return false;
+      state.trace=Math.max(0,state.trace+elapsed*(strength>=.55?(strength-.55)/.45:-.35));
+      state.trace=Math.min(state.required,state.trace);
+      state.hold=strength>=.72&&state.trace>=state.required?state.hold+elapsed:0;
+      if(state.hold>=900){state.locked=true;state.hold=0;}
+    }else {state.hold=strength<.53?state.hold+elapsed:0;if(state.hold>=600){state.locked=false;state.hold=0;state.trace=0;}}
     return state.locked;
   }
   function candidateFor(scores,current,locked){
@@ -138,7 +157,7 @@ window.KaiiReveal = {
     // A small lead is insufficient to replace the current trace.
     return current&&scores[current]>=value-.08?current:best;
   }
-  const api={profiles,imageFeatures,audioFeatures,score,updateLock,candidateFor};
+  const api={profiles,imageFeatures,audioFeatures,score,createLock,updateLock,candidateFor,imageChange,soundChange};
   if(typeof module!=='undefined')module.exports=api;else root.KaiiSensing=api;
 })(typeof window!=='undefined'?window:globalThis);
 </script><script>'use strict';
@@ -150,8 +169,9 @@ const scenes = {
 let generation = 0, phase = 'search', rows = [], selected = scenes.crossing, mediaStream = null;
 let audioContext = null, soundTimer = null, clickBuffers = null;
 let sensingContext=null,analyser=null,micSource=null,spectrum=null,demoMode=false,mediaRequest=0;
-let strength=0,lockState={locked:false,hold:0},lastSense=performance.now();
+let strength=0,displayedStrength=0,lockState=window.KaiiSensing.createLock(),lastSense=performance.now();
 let candidate=null,patternStrengths={};
+let exploring=false,activityUntil=0,previousPixels=null,previousAudio=null,lastVisualSample=0,lastAudioSample=0,demoDragging=false;
 const sampleCanvas=document.createElement('canvas');sampleCanvas.width=64;sampleCanvas.height=48;
 const sampleContext=sampleCanvas.getContext('2d',{willReadFrequently:true});
 let screenFlashAnimation = null;
@@ -205,12 +225,15 @@ function createRows(scene) {
 }
 function line(row) { return `${format(row.date)} ${row.type}`; }
 function releaseMedia() { mediaRequest++;if(mediaStream) mediaStream.getTracks().forEach(track=>track.stop());mediaStream=null;micSource?.disconnect();analyser?.disconnect();micSource=null;analyser=null;spectrum=null;sensingContext?.close().catch(()=>{});sensingContext=null;$('camera').srcObject=null;$('camera').hidden=true;$('media').textContent='カメラ・マイクを使う';clearReaction(); }
-function clearReaction(){strength=0;lockState={locked:false,hold:0};candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
+function clearReaction(){strength=0;displayedStrength=0;exploring=false;activityUntil=0;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
 function paintReaction(){
   const locked=lockState.locked,radar=$('radar');
-  radar.style.setProperty('--reaction',strength.toFixed(3));radar.dataset.strength=strength.toFixed(3);
+  const progress=Math.min(1,lockState.trace/lockState.required);
+  if(locked||exploring)displayedStrength=locked?strength:strength*(.35+.65*progress);
+  $('search').classList.toggle('exploring',exploring);
+  radar.style.setProperty('--reaction',displayedStrength.toFixed(3));radar.dataset.strength=displayedStrength.toFixed(3);
   $('search').classList.toggle('locked',locked);$('measure').disabled=!locked;
-  $('signal-label').textContent=locked?'反応捕捉':strength>.55?'反応増大':strength>.2?'微弱反応':'探知中';
+  $('signal-label').textContent=locked?'反応捕捉':displayedStrength>.55?'反応増大':displayedStrength>.2?'微弱反応':'探知中';
   document.querySelector('.radar-label').textContent=locked?'LOCKED':'SCANNING';
 }
 function senseEnvironment(){
@@ -225,20 +248,26 @@ function senseEnvironment(){
   }else{
     const video=$('camera');
     if(mediaStream?.getVideoTracks().some(t=>t.readyState==='live'&&!t.muted)&&video.readyState>=2){
-      try{sampleContext.drawImage(video,0,0,64,48);visual=window.KaiiSensing.imageFeatures(sampleContext.getImageData(0,0,64,48).data);}catch{}
+      try{
+        sampleContext.drawImage(video,0,0,64,48);const pixels=sampleContext.getImageData(0,0,64,48).data;visual=window.KaiiSensing.imageFeatures(pixels);
+        if(now-lastVisualSample>=250){if(window.KaiiSensing.imageChange(previousPixels,pixels)>.025)activityUntil=now+350;previousPixels=pixels;lastVisualSample=now;}
+      }catch{}
     }
     if(analyser&&sensingContext?.state==='running'&&mediaStream?.getAudioTracks().some(t=>t.readyState==='live'&&!t.muted)){
       analyser.getByteFrequencyData(spectrum);audio=window.KaiiSensing.audioFeatures(spectrum,sensingContext.sampleRate,analyser.fftSize);
+      if(now-lastAudioSample>=250){if(!visual&&window.KaiiSensing.soundChange(previousAudio,audio)>.18)activityUntil=now+350;previousAudio=audio;lastAudioSample=now;}
     }
   }
   if(!visual&&!audio){clearReaction();return;}
+  exploring=now<activityUntil;
+  if(!exploring&&!lockState.locked){paintReaction();return;}
   const smoothing=1-Math.exp(-Math.min(dt,250)/230),mode=$('specimen').value;
   const keys=mode==='auto'?Object.keys(scenes):[mode];
   for(const key of keys){const match=window.KaiiSensing.score(key,visual,audio);patternStrengths[key]=(patternStrengths[key]||0)+(match-(patternStrengths[key]||0))*smoothing;}
   const next=window.KaiiSensing.candidateFor(patternStrengths,candidate,lockState.locked);
-  if(next!==candidate){lockState={locked:false,hold:0};candidate=next;}
+  if(next!==candidate){lockState=window.KaiiSensing.createLock();candidate=next;}
   strength=candidate?patternStrengths[candidate]:Math.max(0,...Object.values(patternStrengths));
-  window.KaiiSensing.updateLock(lockState,strength,dt);paintReaction();
+  window.KaiiSensing.updateLock(lockState,strength,dt,exploring);paintReaction();
 }
 function resumeAudio() {
   if(!$('sound').checked) return;
@@ -278,8 +307,8 @@ function confirmationSound(){
 function scheduleSound() {
   clearTimeout(soundTimer);
   if(phase!=='search'||document.hidden) return;
-  if(strength>.08)clickSound();
-  const mean=1200*Math.pow(1-strength,2)+55;
+  if(displayedStrength>.08&&(exploring||lockState.locked))clickSound();
+  const mean=1200*Math.pow(1-displayedStrength,2)+55;
   const interval=Math.max(35,Math.min(1800,-Math.log(Math.max(.001,1-Math.random()))*mean));
   soundTimer=setTimeout(scheduleSound,interval);
 }
@@ -489,10 +518,14 @@ $('demo').addEventListener('click',()=>{
   demoMode=!demoMode;
   if(demoMode)releaseMedia();
   $('demo-environment').hidden=!demoMode;$('demo').textContent=demoMode?'仮の環境を止める':'仮の環境で試す';
-  $('media-status').textContent=demoMode?'仮の色・音で探知を確認中':'背景は仮画像／映像・音声は保存・送信しません';
+  $('media-status').textContent=demoMode?'仮の環境／レーダーをなぞって探索':'背景は仮画像／映像・音声は保存・送信しません';
   clearReaction();resumeAudio();scheduleSound();
 });
 $('environment').addEventListener('change',clearReaction);
+// Production input comes from image/audio changes. Dragging is only a demo control.
+$('radar').addEventListener('pointerdown',event=>{if(demoMode&&phase==='search'){demoDragging=true;$('radar').setPointerCapture(event.pointerId);}});
+$('radar').addEventListener('pointermove',()=>{if(demoMode&&demoDragging&&phase==='search')activityUntil=performance.now()+350;});
+for(const event of ['pointerup','pointercancel','lostpointercapture'])$('radar').addEventListener(event,()=>{demoDragging=false;});
 $('media').addEventListener('click',async()=>{
   if(mediaStream){releaseMedia();$('media-status').textContent='背景は仮画像／仮の環境でも試せます';return;}
   if(!navigator.mediaDevices?.getUserMedia){$('media-status').textContent='カメラ・マイクを利用できません。仮の環境で試せます。';return;}
