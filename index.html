@@ -310,7 +310,7 @@ function senseEnvironment(){
       if(now-lastAudioSample>=250){if(!visual){const change=window.KaiiSensing.soundChange(previousAudio,audio);if(change>.18)activityUntil=now+350;sceneMotion={x:previousAudio?(audio.bands[2]-previousAudio.bands[2])*2:0,y:previousAudio?(audio.bands[0]-previousAudio.bands[0])*2:0};}previousAudio=audio;lastAudioSample=now;}
     }
   }
-  if(!visual&&!audio){clearReaction();return;}
+  if(!visual&&!audio){if(strength||candidate||exploring||previousPixels||previousAudio)clearReaction();return;}
   exploring=now<activityUntil;
   if(!exploring&&!lockState.locked){paintReaction();return;}
   const smoothing=1-Math.exp(-Math.min(dt,250)/230),mode=$('specimen').value;
