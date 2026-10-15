@@ -382,7 +382,7 @@ window.KaiiReveal = {
     if(audio){const fit=audio.energy<.025?0:clamp((audio.bands[p.band]-.1)/.3);total+=(SOUND_FLOOR+(1-SOUND_FLOOR)*fit)*.35;weight+=.35;}
     return weight?clamp(total/weight):0;
   }
-  function createLock(random=Math.random){return {locked:false,hold:0,trace:0,required:7100+random()*7000};}
+  function createLock(random=Math.random){return {locked:false,hold:0,trace:0,required:6100+random()*7000};}
   function imageChange(previous,current){
     if(!previous||previous.length!==current.length||!current.length)return 0;
     let drift=0,change=0,chroma=0,n=current.length/4;
@@ -593,7 +593,7 @@ const scenes = {
   four44: {"key":"four44","name":"4時44分","asset":"i/c485c9704db6.jpg","type":"モクゲキ","count":7,"dates":["1968-04-04T16:44:44","1979-11-14T04:44:44","1988-04-04T16:44:44","1999-04-14T16:44:44","2004-04-04T04:44:44","2044-04-04T16:44:44","2066-06-06T04:44:44"],"special":true,"condition":"time444","alt":"夕日の差す古い校舎の廊下。時計は4時44分を指し、鏡の中にだけ人影が立ち、階段の先は闇に消え、受話器が外れ、奥の音楽室にピアノがある。","description":"4（し）は「死」に通じる。そのため4が三つ並ぶ4時44分は、あらゆる怪異が起きる時刻だと全国の学校で語られてきた。その時刻に鏡を覗くと自分の死に顔が映る。階段の段が一つ増え、数えた者は異界へ連れて行かれる。誰もいない音楽室のピアノが鳴り、電話をかけると、この世ではない場所につながる。44秒の一瞬だけ、世界の継ぎ目がほどける。多くは放課後の午後4時44分の話だが、明け方の4時44分を恐れる人もいる。"}
 };
 let generation = 0, phase = 'search', rows = [], selected = scenes.crossing, mediaStream = null;
-let audioContext = null, soundTimer = null, clickBuffers = null;
+let audioContext = null, soundTimer = null, clickBuffers = null, motorVoice = null;
 let sensingContext=null,analyser=null,micSource=null,spectrum=null,demoMode=false,mediaRequest=0;
 let strength=0,displayedStrength=0,lockState=window.KaiiSensing.createLock(),lastSense=performance.now();
 let candidate=null,patternStrengths={};
@@ -719,7 +719,7 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const format = value => value.replace('T',' ').replaceAll('-','.');
 const sleep = ms => new Promise(resolve => setTimeout(resolve,ms));
 function refreshCampaign() { const label=window.KaiiCampaign.getLabel(),url=window.KaiiCampaign.getUrl(); $('campaign-note').textContent=label; $('campaign-note').hidden=!label; $('campaign-link').hidden=!url; if(url)$('campaign-link').href=url; }
-function setPhase(value) { phase = value; $('instrument').dataset.phase = value; }
+function setPhase(value) { phase = value; $('instrument').dataset.phase = value; syncMotor(); }
 function stopDigitalRain() {
   if(rainFrame!==null)cancelAnimationFrame(rainFrame);
   if(rainResize)removeEventListener('resize',rainResize);
@@ -826,6 +826,7 @@ function bootHide(){bootRun++;clearInterval(bootTimer);$('boot').hidden=true;}
 function bootFinish(run,hasVideo){
   return new Promise(done=>{
     if(run!==bootRun)return done();
+    resumeAudio();
     const camera=$('boot-lines').querySelector('li.pending');
     if(camera){camera.classList.remove('pending');camera.querySelector('i').style.width='100%';camera.querySelector('.boot-state').textContent=hasVideo?'OK':'未接続';camera.classList.add('done');}
     const start=performance.now();let at=0;
@@ -859,7 +860,7 @@ function paintHud(){
   if(hudAudio?.sound){const max=Math.max(...hudAudio.sound,.0001),gain=Math.min(1,(hudAudio.loudness||0)*3);const bw=aw/hudAudio.sound.length;
     hudAudio.sound.forEach((v,i)=>{const bh=Math.max(1,v/max*gain*ah);a.fillRect(i*bw,ah-bh,bw-1,bh);});}
 }
-function releaseMedia() { mediaRequest++;bootHide();if(mediaStream) mediaStream.getTracks().forEach(track=>track.stop());mediaStream=null;micSource?.disconnect();analyser?.disconnect();micSource=null;analyser=null;spectrum=null;sensingContext?.close().catch(()=>{});sensingContext=null;$('camera').srcObject=null;$('camera').hidden=true;$('media').textContent='カメラ・マイクを使う';clearReaction(); }
+function releaseMedia() { stopMotor(true);mediaRequest++;bootHide();if(mediaStream) mediaStream.getTracks().forEach(track=>track.stop());mediaStream=null;micSource?.disconnect();analyser?.disconnect();micSource=null;analyser=null;spectrum=null;sensingContext?.close().catch(()=>{});sensingContext=null;$('camera').srcObject=null;$('camera').hidden=true;$('media').textContent='カメラ・マイクを使う';clearReaction(); }
 function clearReaction(){stopAnomaly();strength=0;displayedStrength=0;exploring=false;aimed=false;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;demoPoint=null;radarTrace=window.KaiiSensing.createRadar();shownTrace=null;manualAim={yaw:0,pitch:0};flowYaw=null;lastImageChange=1;darkView=false;conditions=window.KaiiSensing.createConditions();rush=null;specialHold=null;lastAim=null;scan={found:false,bins:{},candidate:null};lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
 function paintReaction(){
   const locked=lockState.locked,radar=$('radar');
@@ -1006,7 +1007,7 @@ function senseEnvironment(){
   const next=specialHold||scan.candidate;
   if(next!==candidate){
     const kept=lockState.trace;lockState=S.createLock();lockState.trace=Math.min(lockState.required,kept);
-    candidate=next;if(scenes[next]?.condition==='time444')lockState.required=Math.min(lockState.required,4000);
+    candidate=next;if(scenes[next]?.condition==='time444')lockState.required=Math.min(lockState.required,3000);
   }
   strength=candidate?patternStrengths[candidate]:0;
   const wasLocked=lockState.locked;
@@ -1044,7 +1045,40 @@ function syncStartButton(){
 function setSoundLabel(){$('sound-toggle').textContent=$('sound').checked?'音 ON':'音 OFF';$('sound-toggle').setAttribute('aria-pressed',String($('sound').checked));}
 function resumeAudio() {
   if(!$('sound').checked) return;
-  try { audioContext ||= new (window.AudioContext || window.webkitAudioContext)(); audioContext.resume().catch(()=>{}); } catch { $('sound').checked=false; }
+  try { audioContext ||= new (window.AudioContext || window.webkitAudioContext)(); audioContext.resume().then(syncMotor).catch(()=>{}); syncMotor(); } catch { $('sound').checked=false; }
+}
+// ロードと探索で同じ機械が回り続ける。低域だけを使い、計数音・ソナー・聖歌の帯域を空ける。
+function stopMotor(immediate=false){
+  const voice=motorVoice;if(!voice)return;motorVoice=null;
+  const now=audioContext.currentTime;
+  voice.gain.gain.cancelScheduledValues(now);
+  voice.gain.gain.setTargetAtTime(0,now,immediate?.005:.06);
+  // 予約済みの声も自分のノードだけを片づけ、直後の再起動と干渉しない。
+  voice.base.onended=()=>{for(const node of voice.nodes)node.disconnect();};
+  for(const source of voice.sources){try{source.stop(now+(immediate?.02:.3));}catch{}}
+}
+function syncMotor(){
+  const active=audioContext?.state==='running'&&$('sound').checked&&!document.hidden
+    &&(mediaStream||demoMode)&&phase!=='result';
+  if(!active){stopMotor(document.hidden||!$('sound').checked);return;}
+  const now=audioContext.currentTime;
+  if(!motorVoice){
+    const base=audioContext.createOscillator(),harmonic=audioContext.createOscillator();
+    const overtone=audioContext.createGain(),filter=audioContext.createBiquadFilter(),gain=audioContext.createGain();
+    const flutter=audioContext.createOscillator(),depth=audioContext.createGain(),rotor=audioContext.createGain();
+    base.type='sine';base.frequency.value=110;
+    harmonic.type='triangle';harmonic.frequency.value=220;overtone.gain.value=.22;
+    filter.type='lowpass';filter.frequency.value=330;filter.Q.value=.45;
+    flutter.frequency.value=24;depth.gain.value=.08;rotor.gain.value=1;
+    base.connect(filter);harmonic.connect(overtone);overtone.connect(filter);
+    flutter.connect(depth);depth.connect(rotor.gain);filter.connect(rotor);rotor.connect(gain);gain.connect(audioContext.destination);
+    gain.gain.setValueAtTime(0,now);
+    motorVoice={base,gain,sources:[base,harmonic,flutter],nodes:[base,harmonic,overtone,filter,gain,flutter,depth,rotor]};
+    for(const source of motorVoice.sources)source.start(now);
+  }
+  // 捕捉音と重なる時は控えめに、数字の確定・集約・絵の登場中はさらに下げる。
+  const level=phase==='search'?(lockState.locked?.007:.016):.003;
+  motorVoice.gain.gain.setTargetAtTime(level,now,.12);
 }
 // 段階ごとの平均間隔（ミリ秒）と、連打になる確率。最後は捕捉中。
 const GEIGER_MEAN=[1100,620,320,150,75,42],GEIGER_BURST=[0,.05,.18,.35,.55,.7];
@@ -1091,6 +1125,7 @@ function effectVoice(){
   effectVoices.add(voice);return voice;
 }
 function lockSound(){
+  syncMotor();
   const v=effectVoice();if(!v)return;
   const osc=v.add(audioContext.createOscillator(),true),gain=v.add(audioContext.createGain());
   osc.type='sine';osc.frequency.setValueAtTime(1568,v.now);osc.frequency.exponentialRampToValueAtTime(1046.5,v.now+.18);
@@ -1151,6 +1186,7 @@ function hymnSound(){
 
 function scheduleSound() {
   clearTimeout(soundTimer);
+  syncMotor();
   if(document.hidden||(phase!=='search'&&!(anomaly&&(phase==='measure'||phase==='sort')))) return;
   if(anomaly){clickSound(1);soundTimer=setTimeout(scheduleSound,Math.random()<.82?14+Math.random()*50:180+Math.random()*520);return;}
   // 探索の進み具合で5段階に激しくなり、捕捉で最大になる（2026-10-15ユーザー指定）。
@@ -1402,7 +1438,7 @@ if(RELEASE){$('specimen').value='auto';$('special-test').checked=false;$('show-n
 new MutationObserver(()=>{if(!mediaStream)$('start-note').textContent=$('media-status').textContent;}).observe($('media-status'),{childList:true,characterData:true,subtree:true});
 $('measure').addEventListener('click',begin);$('again').addEventListener('click',reset);$('specimen').addEventListener('change',reset);
 $('save').addEventListener('click',()=>save());$('share').addEventListener('click',()=>save(true));
-$('sound').addEventListener('change',()=>{if(!$('sound').checked)stopEffects();resumeAudio();scheduleSound();});
+$('sound').addEventListener('change',()=>{if(!$('sound').checked){stopEffects();stopMotor(true);}resumeAudio();scheduleSound();});
 $('demo').addEventListener('click',()=>{
   liteMode=false;
   if(phase!=='search')return;
@@ -1469,8 +1505,8 @@ $('media').addEventListener('click',async()=>{
   finally{$('media').disabled=false;}
 });
 let sensingTimer=setInterval(senseEnvironment,100);
-addEventListener('visibilitychange',()=>{if(document.hidden)stopEffects();clearReaction();clearTimeout(soundTimer);if(!document.hidden){sensingContext?.resume().catch(()=>{});scheduleSound();}});
-addEventListener('pagehide',()=>{stopSensors();stopAnomaly();stopEffects();generation++;stopDigitalRain();releaseMedia();clearTimeout(soundTimer);clearInterval(sensingTimer);audioContext?.close();audioContext=null;clickBuffers=null;confirmationVoices.clear();});
+addEventListener('visibilitychange',()=>{if(document.hidden){stopEffects();stopMotor(true);}clearReaction();clearTimeout(soundTimer);if(!document.hidden){sensingContext?.resume().catch(()=>{});resumeAudio();scheduleSound();}});
+addEventListener('pagehide',()=>{stopSensors();stopAnomaly();stopEffects();stopMotor(true);generation++;stopDigitalRain();releaseMedia();clearTimeout(soundTimer);clearInterval(sensingTimer);audioContext?.close();audioContext=null;clickBuffers=null;confirmationVoices.clear();});
 addEventListener('pageshow',event=>{if(event.persisted){if(sensors.granted)startSensors();sensingTimer=setInterval(senseEnvironment,100);reset();}});
 reset();
 setInterval(refreshCampaign,1000);
