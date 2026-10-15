@@ -65,10 +65,20 @@
 html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:none!important}
 .brand{padding-top:58px}
 #instrument:not([data-phase=search]):not([data-phase=result]) .top-controls{display:none}
+/* 照準型レーダー（2026-10-15）：中央＝カメラの向き。中央の輪は「真ん中」とみなす範囲（半径の15%）で、探索の進み具合で満ちていく。 */
+.aim-ring{position:absolute;left:35%;top:35%;width:30%;height:30%;border-radius:50%;pointer-events:none;background:conic-gradient(#d6f5c4 calc(var(--progress,0)*360deg),#7f9c7c40 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));opacity:.8}
+#search.aimed .aim-ring{opacity:1;filter:drop-shadow(0 0 5px #b9f0a0)}
+#search.locked .aim-ring{opacity:1;filter:drop-shadow(0 0 8px #d8ffc4)}
+.signal{transition:opacity .2s}
+/* 点が画面の外へ逃げた時は、逃げた方向の端に小さな印を出す。 */
+#search.edge .signal{width:6px;height:6px;margin:1px;background:#e8ffd6;box-shadow:0 0 8px 2px #b9f0a080;animation:edge-blink .9s steps(2) infinite}
+@keyframes edge-blink{50%{opacity:.3}}
+.sensor-note{opacity:.8}
+.debug-numbers{white-space:pre-line}
 </style>
 </head>
 <body>
-  <header class="workbench"><span>演出試作 <small>探知・演出試作／絵は確認中</small></span><label><span class="sr-only">探知モード</span><select id="specimen"><option value="auto">自動で探す</option></select></label><label class="sound" title="確認用：候補と一致度を表示"><input type="checkbox" id="show-numbers">数値</label><label class="sound" title="確認用：捕捉した怪異を特別条件として扱う"><input type="checkbox" id="special-test">特別演出</label><label class="sound"><input type="checkbox" id="sound" checked>音</label></header>
+  <header class="workbench"><span>演出試作 <small>探知・演出試作／絵は確認中</small></span><label><span class="sr-only">探知モード</span><select id="specimen"><option value="auto">自動で探す</option></select></label><label class="sound" title="確認用：候補と一致度を表示"><input type="checkbox" id="show-numbers">数値</label><label class="sound" title="確認用：センサーの特別条件をその場で成立させる"><span class="sr-only">特別条件を成立</span><select id="force-condition"><option value="">条件を成立</option></select></label><label class="sound" title="確認用：捕捉した怪異を特別条件として扱う"><input type="checkbox" id="special-test">特別演出</label><label class="sound"><input type="checkbox" id="sound" checked>音</label></header>
   <main id="instrument" data-phase="search">
     <video id="camera" autoplay playsinline muted hidden></video><div class="ambient"></div>
     <canvas id="digital-rain" aria-hidden="true" hidden></canvas>
@@ -76,8 +86,8 @@ html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:
     <div class="top-controls"><button id="open-manual" type="button">取扱説明書</button><button id="sound-toggle" type="button" aria-pressed="true">音 ON</button></div>
     <div class="brand"><span>時相観測装置</span><h1>デジタル怪異測定器</h1></div>
     <section id="search" aria-label="サーチ">
-      <div class="radar" id="radar"><div class="radar-grid"></div><div class="sweep"></div><div class="signal"></div><span class="crosshair"></span><span class="radar-label">SCANNING</span></div>
-      <p id="signal-label">探知中</p><p id="debug-numbers" class="debug-numbers" hidden></p><button id="start-media" class="start-media">カメラとマイクで探す</button><p id="start-note" class="start-note">映像・音声は端末内だけで使い、保存・送信しません</p><button id="start-lite" type="button" class="start-lite">カメラを使わずに観測する</button><button id="measure" disabled>測定開始</button>
+      <div class="radar" id="radar"><div class="radar-grid"></div><div class="sweep"></div><div class="signal"></div><span class="aim-ring" aria-hidden="true"></span><span class="crosshair"></span><span class="radar-label">SCANNING</span></div>
+      <p id="signal-label">探知中</p><p id="debug-numbers" class="debug-numbers" hidden></p><button id="start-media" class="start-media">カメラとマイクで探す</button><p id="start-note" class="start-note">映像・音声・端末の動きは端末の中だけで使い、保存・送信しません</p><p id="sensor-note" class="start-note sensor-note" hidden>動きのセンサーが使えないため、一部の痕跡は探知できません</p><button id="start-lite" type="button" class="start-lite">カメラを使わずに観測する</button><button id="measure" disabled>測定開始</button>
     </section>
     <section id="reading" hidden aria-label="観測中">
       <div class="reading-title">時相照合</div><div id="digits" aria-hidden="true">0000.00.00<br>00:00:00</div><div id="records" aria-label="確定した観測記録"></div><div id="phase-label" role="status">測定中</div>
@@ -97,17 +107,17 @@ html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:
         <p>本機は、その場所に残された過去と未来の「時空の痕跡」を、景色の色・明るさと周囲の音から探知する観測装置です。いまそこに怪異がいるわけではありません。たぶん。</p>
         <h3>観測のしかた</h3>
         <ol>
-          <li>「カメラとマイクで探す」を押し、カメラとマイクの使用を許可してください。</li>
-          <li>スマホを構えたまま、ゆっくり景色を見回してください。じっとしていても痕跡は集まりません。場所や音が変われば、反応する怪異も変わります。</li>
-          <li>探索が満ちると、そのとき最も強く反応している怪異を捕捉します。「測定開始」で、観測日時が次々に確定していきます。</li>
+          <li>「カメラとマイクで探す」を押し、カメラ・マイクと、端末の動きと向きの使用を許可してください。</li>
+          <li>その場でスマホを構え、ゆっくり見回してください。レーダーの真ん中は、カメラが向いている先です。光る点の方へスマホを向け、点を真ん中に合わせている間だけ痕跡が集まります。点は漂い、ときどき逃げます。場所や音が変われば、反応する怪異も変わります。</li>
+          <li>真ん中の輪が満ちると、そのとき最も強く反応している怪異を捕捉します。「測定開始」で、観測日時が次々に確定していきます。</li>
           <li>観測が終わると、怪異の姿が現れます。画像を保存して、観測記録を共有できます。</li>
         </ol>
         <h3>観測できる怪異</h3>
         <p>反応する怪異は、場所の色合い、明るさ、音、そして時間帯によって変わります。ある時刻、ある夜、ある動作の中でしか観測されない怪異もいるらしい、と記録されています。</p>
         <h3>カメラとマイクを使わない場合</h3>
-        <p>カメラとマイクを使わない場合、本機は「省電力観測モード」で動作します。レーダーを指でなぞると探索が進みますが、観測できるのは本機にあらかじめ記録された一部の怪異だけで、毎回決まった順番に現れます。特別な条件の下でしか現れない怪異は、この方法では決して観測できません。本機の真価は、あなたの目と耳の代わりとなるカメラとマイクがあってこそ発揮されます。</p>
+        <p>カメラとマイクを使わない場合、本機は「省電力観測モード」で動作します。スマホを動かしてレーダーの点を真ん中に合わせると探索が進みます（動きのセンサーが使えない端末では、点を指でなぞって動かします）。ただし、観測できるのは本機にあらかじめ記録された一部の怪異だけで、毎回決まった順番に現れます。特別な条件の下でしか現れない怪異は、この方法では決して観測できません。本機の真価は、あなたの目と耳の代わりとなるカメラとマイクがあってこそ発揮されます。</p>
         <h3>映像と音、アクセス解析について</h3>
-        <p>カメラの映像とマイクの音は、端末の中で色と音の傾向を数値にするためだけに使います。録画・録音・保存・送信は一切しません。</p>
+        <p>カメラの映像とマイクの音は、端末の中で色と音の傾向を数値にするためだけに使います。端末の動きと向きは、レーダーの照準を動かすことと観測の判定にだけ使います。録画・録音・保存・送信は一切しません。</p>
         <p>本機の利用状況を知るために、Google LLC のアクセス解析ツール「Google アナリティクス」を使っています。Cookie を使い、閲覧したページ、押したボタンの種類、観測された怪異の名前、端末やブラウザの種類、おおよその地域などを Google に送信します。映像と音は送信しません。データは個人を特定しない形で集計されます。計測を止めたい場合は、ブラウザの設定で Cookie を無効にするか、<a href="https://tools.google.com/dlpage/gaoptout?hl=ja" target="_blank" rel="noopener">Google アナリティクス オプトアウト アドオン</a>をご利用ください。</p>
         <h3>安全のために</h3>
         <ul>
@@ -309,48 +319,134 @@ window.KaiiReveal = {
     if(!previous||!current||current.energy<.025)return 0;
     return Math.max(...current.bands.map((value,i)=>Math.abs(value-previous.bands[i])));
   }
-  // Estimate movement of the scenery, not compass direction or object identity.
-  function imageMotion(previous,current,width=64,height=48){
+  // 景色の流れ（ピクセル単位）。センサーが使えない時に、カメラの向きの変化の代わりにする。
+  // 速く振っても追えるよう、粗く広く探してから細かく詰める。
+  function imageMotion(previous,current,width=64,height=48,range=12){
     if(!previous||previous.length!==current.length||current.length!==width*height*4)return {x:0,y:0};
     const luma=(p,i)=>(p[i]+p[i+1]+p[i+2])/3;
     let before=0,after=0;
     for(let i=0;i<current.length;i+=4){before+=luma(previous,i);after+=luma(current,i);}
     const drift=(after-before)/(width*height);
-    let best=Infinity,stationary=Infinity,bx=0,by=0;
-    for(let dy=-4;dy<=4;dy+=2)for(let dx=-4;dx<=4;dx+=2){
-      let cost=0,n=0;
-      for(let y=6;y<height-6;y+=2)for(let x=6;x<width-6;x+=2){
-        cost+=Math.abs(luma(current,(y*width+x)*4)-luma(previous,((y-dy)*width+x-dx)*4)-drift);n++;
+    const cost=(dx,dy)=>{
+      let sum=0,n=0;
+      for(let y=range;y<height-range;y+=2)for(let x=range;x<width-range;x+=2){
+        sum+=Math.abs(luma(current,(y*width+x)*4)-luma(previous,((y-dy)*width+x-dx)*4)-drift);n++;
       }
-      cost/=n;if(dx===0&&dy===0)stationary=cost;
-      if(cost<best){best=cost;bx=dx;by=dy;}
+      return sum/n;
+    };
+    const stationary=cost(0,0);
+    let best=stationary,bx=0,by=0;
+    for(let dy=-range;dy<=range;dy+=3)for(let dx=-range;dx<=range;dx+=3){const c=cost(dx,dy);if(c<best){best=c;bx=dx;by=dy;}}
+    const cx=bx,cy=by;
+    for(let dy=cy-2;dy<=cy+2;dy++)for(let dx=cx-2;dx<=cx+2;dx++){
+      if(Math.abs(dx)>range||Math.abs(dy)>range)continue;
+      const c=cost(dx,dy);if(c<best){best=c;bx=dx;by=dy;}
     }
     if(stationary<3||(stationary-best)/stationary<.18)return {x:0,y:0};
-    return {x:bx/4,y:by/4};
+    return {x:bx,y:by};
   }
+
+  // ---- 向き・動きのセンサー（2026-10-15ユーザー確定） ----
+  const RAD=Math.PI/180,DEG=180/Math.PI;
+  const wrap180=a=>((a%360)+540)%360-180;
+  // deviceorientation の alpha・beta・gamma（度）から、端末の向きを世界の座標（x=東、y=北、z=上）で返す。
+  // camera：背面カメラの向き、top：端末の上端の向き、screen：画面の表の向き。
+  // 相対の alpha では、北の代わりに任意の基準になる。
+  function deviceAxes(alpha,beta,gamma){
+    if(alpha==null||beta==null||gamma==null)return null;
+    const a=alpha*RAD,b=beta*RAD,g=gamma*RAD,cZ=Math.cos(a),sZ=Math.sin(a),cX=Math.cos(b),sX=Math.sin(b),cY=Math.cos(g),sY=Math.sin(g);
+    const screen={x:cY*sZ*sX+cZ*sY,y:sZ*sY-cZ*cY*sX,z:cX*cY};
+    return {screen,camera:{x:-screen.x,y:-screen.y,z:-screen.z},top:{x:-cX*sZ,y:cZ*cX,z:sX}};
+  }
+  // 水平の向き（北=0、東=90）と仰角（真上=90）。
+  const bearing=v=>(Math.atan2(v.x,v.y)*DEG+360)%360;
+  const elevation=v=>Math.asin(Math.max(-1,Math.min(1,v.z)))*DEG;
+
+  // 照準型レーダー：中央＝カメラの向き。画面の端は左右±90度・上下±60度。
+  // 点は起動した場所から半径約2mのどこかにいる。動かず見回す前提なので、使うのは角度だけ。
+  const AIM={yaw:90,pitch:60,center:.15,maxPitch:45};
   function createRadar(random=Math.random){
-    const angle=random()*Math.PI*2;
-    return {x:Math.cos(angle)*.72,y:Math.sin(angle)*.72,active:0,nextJump:18000+random()*24000,jumps:0};
+    return {yaw:null,pitch:0,vy:0,vp:0,active:0,nextFlee:15000+random()*25000,nextBigFlee:120000+random()*120000,flees:0,x:.6,y:-.3};
   }
-  function updateRadar(state,{active,locked,progress,strength,motion,dt},random=Math.random){
-    if(locked){state.x=0;state.y=0;return state;}
-    if(!active)return state;
-    const elapsed=Math.min(250,Math.max(0,dt)),seconds=elapsed/1000;
-    state.active+=elapsed;
-    const x=motion?.x||0,y=motion?.y||0;
-    // Panning shifts the trace across the scope; sustained matching exploration
-    // brings it closer. Neither the clock nor a fixed diagonal drives the dot.
-    state.x+=x*seconds*.7;state.y+=y*seconds*.7;
-    let angle=Math.atan2(state.y,state.x),radius=Math.hypot(state.x,state.y);
-    if(state.active>=state.nextJump){
-      angle+=(random()<.5?-1:1)*(.45+random()*.5);
-      radius+=.12;state.jumps++;state.nextJump=state.active+22000+random()*26000;
+  const clampPitch=p=>Math.max(-AIM.maxPitch,Math.min(AIM.maxPitch,p));
+  // 最初は画面の中だが中央から外れた所に置く。
+  function placeTrace(state,aim,random=Math.random){
+    state.yaw=aim.yaw+(random()<.5?-1:1)*(35+random()*45);
+    state.pitch=clampPitch(aim.pitch+(random()*2-1)*30);
+  }
+  // 画面上の位置（レーダーの半径を1とする）。外に出たら端に寄せ、outside にする。
+  function aimPosition(state,aim){
+    if(state.yaw==null||!aim)return {x:state.x,y:state.y,outside:false,distance:Math.hypot(state.x,state.y)};
+    let x=wrap180(state.yaw-aim.yaw)/AIM.yaw,y=(aim.pitch-state.pitch)/AIM.pitch;
+    const distance=Math.hypot(x,y),outside=distance>.92;
+    if(outside){x*=.92/distance;y*=.92/distance;}
+    return {x,y,outside,distance};
+  }
+  // 点はゆっくり漂い、時々逃げ、まれに大きく逃げる。逃げた時は 1（小）か 2（大）を返す。
+  function updateRadar(state,{active,locked,aim,dt},random=Math.random){
+    if(!aim)return 0;
+    if(state.yaw==null)placeTrace(state,aim,random);
+    if(locked||!active)return 0;
+    const ms=Math.min(250,Math.max(0,dt)),s=ms/1000;
+    state.active+=ms;
+    state.vy=Math.max(-4,Math.min(4,state.vy+(random()*2-1)*6*s));
+    state.vp=Math.max(-2,Math.min(2,state.vp+(random()*2-1)*3*s));
+    state.yaw+=state.vy*s;state.pitch+=state.vp*s;
+    if(Math.abs(state.pitch)>=AIM.maxPitch){state.pitch=clampPitch(state.pitch);state.vp=-state.vp;}
+    let fled=0;
+    if(state.active>=state.nextBigFlee){
+      // 数分に1回、大きく画面の外へ。
+      fled=2;state.yaw+=(random()<.5?-1:1)*(100+random()*50);state.pitch=clampPitch(state.pitch+(random()*2-1)*20);
+      state.nextBigFlee=state.active+120000+random()*120000;state.nextFlee=state.active+15000+random()*25000;
+    }else if(state.active>=state.nextFlee){
+      // 約15〜40秒ごとに20〜60度。
+      const d=20+random()*40,dir=random()*Math.PI*2;
+      fled=1;state.yaw+=Math.cos(dir)*d;state.pitch=clampPitch(state.pitch+Math.sin(dir)*d*.5);
+      state.nextFlee=state.active+15000+random()*25000;
     }
-    const target=.08+.64*Math.pow(1-clamp(progress),.8)+(1-clamp(strength))*.08;
-    radius+=(target-radius)*(1-Math.exp(-seconds*2.8));
-    radius=Math.min(.86,Math.max(.035,radius));
-    state.x=Math.cos(angle)*radius;state.y=Math.sin(angle)*radius;
-    return state;
+    if(fled)state.flees++;
+    return fled;
+  }
+
+  // センサーを使う特別条件。成立までの時間（ミリ秒）。
+  const CONDITION_HOLD={northPillow:10000,kimon:5000,hitori:3000,flying:5000,kokkuri:10000};
+  function createConditions(){return {timers:Object.fromEntries(Object.keys(CONDITION_HOLD).map(k=>[k,0])),turn:[],clock:0};}
+  // input：axes（deviceAxes の値）、absolute（{camera,top} の方位。なければ null）、rotation（回る速さ 度/秒）、
+  // acceleration（重力を除いた加速度 m/s²）、dark、imageStill、centerTouch、yaw（センサーの水平の向き）、flowYaw（映像の流れから積み上げた向き）。
+  // 成立した条件の名前を返す。
+  function updateConditions(state,input,dt){
+    const ms=Math.min(250,Math.max(0,dt)),t=state.timers,ax=input.axes||null,abs=input.absolute||null;
+    state.clock+=ms;
+    const rotation=input.rotation,still=rotation!=null&&rotation<8&&(input.acceleration==null||input.acceleration<.4);
+    // 少しのぶれで最初からにならないよう、外れた時はゆっくり戻すものもある（decay）。
+    const hold=(key,ok,decay=0)=>{t[key]=ok?t[key]+ms:decay?Math.max(0,t[key]-ms*decay):0;};
+    const faceUp=!!(ax&&ax.screen.z>.85);
+    // 北枕：画面を上にして平らに置き、上端が北の±30度で静止。
+    hold('northPillow',faceUp&&still&&!!abs&&Math.abs(wrap180(abs.top))<=30,2);
+    // 鬼門：背面カメラを北東の±22.5度へ向ける。
+    hold('kimon',!!(ax&&abs&&Math.abs(ax.camera.z)<.8&&Math.abs(wrap180(abs.camera-45))<=22.5),2);
+    // 暗闇で、見回す程度に動かし続ける。
+    hold('hitori',!!input.dark&&rotation!=null&&rotation>=12,1.5);
+    // カメラを真上（±20度）に向けて止まる。
+    hold('flying',!!(ax&&ax.camera.z>=Math.cos(20*RAD))&&rotation!=null&&rotation<10,2);
+    // 置いて、レーダーの中央に指を当て続ける。センサーがなければ、背面カメラが真っ暗で映像が変わらないことで「置いた」とみなす。
+    const placed=(faceUp&&still)||(!ax&&!!input.dark&&!!input.imageStill);
+    hold('kokkuri',placed&&!!input.centerTouch);
+    let met=Object.keys(CONDITION_HOLD).find(key=>t[key]>=CONDITION_HOLD[key])||null;
+    // 振り向き：左右どちらでも、1.5秒以内に約180度回る。センサーがなければ映像の大きく速い横の流れで代わりにする。
+    const fromSensor=input.yaw!=null&&!!ax&&Math.abs(ax.camera.z)<.85,yaw=fromSensor?input.yaw:input.flowYaw;
+    if(yaw==null){state.turn=[];}
+    else{
+      const last=state.turn[state.turn.length-1];
+      const unwrapped=last?last.yaw+wrap180(yaw-last.raw):yaw;
+      if(last&&last.sensor!==fromSensor)state.turn=[];
+      state.turn.push({at:state.clock,raw:yaw,yaw:unwrapped,sensor:fromSensor});
+      while(state.turn.length&&state.clock-state.turn[0].at>1500)state.turn.shift();
+      const values=state.turn.map(p=>p.yaw);
+      if(Math.max(...values)-Math.min(...values)>=(fromSensor?160:120)){met=met||'kagome';state.turn=[];}
+    }
+    if(met&&t[met]!==undefined)t[met]=0;
+    return met;
   }
   // 探索量が満タンになった瞬間に、その時いちばん強い候補へ特定する（2026-10-15ユーザー指定）。
   // 何かしら反応（0.3以上）があれば探索は進み、強いほど速い。止まっている間は進まない。
@@ -382,7 +478,7 @@ window.KaiiReveal = {
     for(const f of samples){f.color.forEach((v,i)=>color[i]+=v);f.light.forEach((v,i)=>light[i]+=v);}
     return {color:normalize(color),light:normalize(light),sound,quiet,width};
   }
-  const api={HUE_BINS,LIGHT_BINS,SOUND_BANDS,overlap,profileFrom,graphScore,soundBands,profiles,imageFeatures,audioFeatures,score,createLock,updateLock,candidateFor,imageChange,soundChange,imageMotion,createRadar,updateRadar};
+  const api={HUE_BINS,LIGHT_BINS,SOUND_BANDS,AIM,CONDITION_HOLD,overlap,profileFrom,graphScore,soundBands,profiles,imageFeatures,audioFeatures,score,createLock,updateLock,candidateFor,imageChange,soundChange,imageMotion,wrap180,deviceAxes,bearing,elevation,createRadar,aimPosition,updateRadar,createConditions,updateConditions};
   if(typeof module!=='undefined')module.exports=api;else root.KaiiSensing=api;
 })(typeof window!=='undefined'?window:globalThis);
 </script><script>'use strict';
@@ -405,8 +501,17 @@ let audioContext = null, soundTimer = null, clickBuffers = null;
 let sensingContext=null,analyser=null,micSource=null,spectrum=null,demoMode=false,mediaRequest=0;
 let strength=0,displayedStrength=0,lockState=window.KaiiSensing.createLock(),lastSense=performance.now();
 let candidate=null,patternStrengths={};
-let exploring=false,activityUntil=0,previousPixels=null,previousAudio=null,lastVisualSample=0,lastAudioSample=0,demoDragging=false;
-let radarTrace=window.KaiiSensing.createRadar(),sceneMotion={x:0,y:0},demoPoint=null;
+let exploring=false,previousPixels=null,previousAudio=null,lastVisualSample=0,lastAudioSample=0,demoDragging=false;
+let radarTrace=window.KaiiSensing.createRadar(),demoPoint=null;
+// 照準型レーダー（2026-10-15）：中央＝カメラの向き。点を中央に合わせている間だけ探索が進む。
+// 向きはセンサー、使えなければ映像の流れ、暗い時やカメラなしでは指でなぞった分（manual）。
+let manualAim={yaw:0,pitch:0},flowYaw=null,lastImageChange=1,darkView=false,aimed=false;
+let conditions=window.KaiiSensing.createConditions(),rush=null,specialHold=null,radarTouch=null;
+let shownTrace=null,lastTracePaint=performance.now();
+// センサーを使う特別条件。怪異の本文と絵ができたら、scenes に condition を付けて登録する。
+// 登録された怪異の条件だけが働く（できていない怪異は出さず、画面でも触れない）。
+const SENSOR_CONDITIONS={northPillow:'北枕',kimon:'鬼門',hitori:'暗闇で動かす',flying:'真上で静止',kokkuri:'置いて中央に指',kagome:'振り向く'};
+const sceneForCondition=condition=>Object.keys(scenes).find(k=>scenes[k].condition===condition)||null;
 let anomaly=false,anomalyTimer=null;
 // アクセス解析（Google アナリティクス 4）。campaign.js の gaMeasurementId があり、本番のURLで開いた時だけ動く。
 // 送るのは画面の操作の種類と怪異の名前だけ。カメラの映像・マイクの音は送らない。
@@ -435,6 +540,85 @@ const sampleCanvas=document.createElement('canvas');sampleCanvas.width=64;sample
 const sampleContext=sampleCanvas.getContext('2d',{willReadFrequently:true});
 let screenFlashAnimation = null;
 let rainFrame = null, rainResize = null;
+// 向き・動きのセンサー（2026-10-15）。値は端末の中で照準と特別条件の判定にだけ使い、保存・送信しない。
+// state：off（未要求）／asking／waiting（許可済み・値待ち）／on／denied／unavailable。
+const sensors={state:'off',axes:null,at:0,relAt:0,yaw:null,pitch:null,rotation:null,acceleration:null,offset:null,absCamera:null,absTop:null,absAt:0,listening:false};
+function requestSensors(){
+  if(['asking','waiting','on'].includes(sensors.state))return;
+  const DOE=window.DeviceOrientationEvent,DME=window.DeviceMotionEvent;
+  if(!DOE){sensors.state='unavailable';return;}
+  sensors.state='asking';
+  // iPhoneのSafariはボタン操作の直後でないと許可を求められないので、カメラ・マイクを待つより先に呼ぶ。
+  const asks=[];
+  try{
+    if(typeof DOE.requestPermission==='function')asks.push(DOE.requestPermission());
+    if(DME&&typeof DME.requestPermission==='function')asks.push(DME.requestPermission());
+  }catch{sensors.state='denied';return;}
+  Promise.all(asks).then(results=>{if(results.some(r=>r!=='granted'))sensors.state='denied';else startSensors();},()=>{sensors.state='denied';});
+}
+function startSensors(){
+  sensors.granted=true;
+  sensors.state='waiting';
+  if(!sensors.listening){
+    sensors.listening=true;
+    addEventListener('deviceorientation',onOrientation);addEventListener('deviceorientationabsolute',onOrientation);addEventListener('devicemotion',onMotion);
+  }
+  // 許可しても値が来なければ、使えない扱い。
+  setTimeout(()=>{if(sensors.state==='waiting')sensors.state='unavailable';},1200);
+}
+function stopSensors(){
+  removeEventListener('deviceorientation',onOrientation);removeEventListener('deviceorientationabsolute',onOrientation);removeEventListener('devicemotion',onMotion);
+  sensors.listening=false;if(sensors.state==='on'||sensors.state==='waiting')sensors.state='off';sensors.axes=null;
+}
+function onOrientation(event){
+  const S=window.KaiiSensing,axes=S.deviceAxes(event.alpha,event.beta,event.gamma);if(!axes)return;
+  const now=performance.now();
+  if(event.type==='deviceorientationabsolute'){
+    // Android：北を基準にした向き。照準は相対の向き（磁気のずれを受けない）で動かし、こちらは方位にだけ使う。
+    sensors.absCamera=S.bearing(axes.camera);sensors.absTop=S.bearing(axes.top);sensors.absAt=now;
+    if(now-sensors.relAt<500)return;
+  }else{
+    sensors.relAt=now;
+    const heading=event.webkitCompassHeading;
+    if(typeof heading==='number'&&heading>=0&&!(event.webkitCompassAccuracy<0)){
+      // iPhone：コンパスの値と相対の向きの差を覚え、方位に直す（平らなら上端、立てていれば背面カメラの向き）。
+      if(axes.screen.z>.8)sensors.offset=heading-S.bearing(axes.top);
+      else if(Math.abs(axes.camera.z)<.5)sensors.offset=heading-S.bearing(axes.camera);
+    }
+    if(sensors.offset!=null){sensors.absCamera=(S.bearing(axes.camera)+sensors.offset+720)%360;sensors.absTop=(S.bearing(axes.top)+sensors.offset+720)%360;sensors.absAt=now;}
+  }
+  // 回る速さ（度/秒）：背面カメラと上端の向きの変わり方から。
+  if(sensors.axes&&now>sensors.at){
+    const angle=(a,b)=>Math.acos(Math.max(-1,Math.min(1,a.x*b.x+a.y*b.y+a.z*b.z)))*180/Math.PI;
+    const rate=Math.max(angle(axes.camera,sensors.axes.camera),angle(axes.top,sensors.axes.top))/((now-sensors.at)/1000);
+    const k=Math.min(1,(now-sensors.at)/150);sensors.rotation=sensors.rotation==null?rate:sensors.rotation+(rate-sensors.rotation)*k;
+  }
+  // 真上・真下に近い時は水平の向きが定まらないので、直前の向きを保つ。
+  if(Math.abs(axes.camera.z)<.97||sensors.yaw==null)sensors.yaw=S.bearing(axes.camera);
+  sensors.pitch=S.elevation(axes.camera);
+  sensors.axes=axes;sensors.at=now;sensors.state='on';
+}
+function onMotion(event){
+  const a=event.acceleration;
+  if(a&&a.x!=null){const m=Math.hypot(a.x,a.y,a.z);sensors.acceleration=sensors.acceleration==null?m:sensors.acceleration+(m-sensors.acceleration)*.2;}
+}
+const sensorsLive=()=>sensors.state==='on'&&performance.now()-sensors.at<1000;
+// 照準の向き：センサーの向きに、指でなぞった分（または映像の流れ）を足す。
+function currentAim(){
+  const live=sensorsLive();
+  return {yaw:(live?sensors.yaw:0)+manualAim.yaw,pitch:Math.max(-80,Math.min(80,(live?sensors.pitch:0)+manualAim.pitch))};
+}
+// 指でなぞれるのは、仮の環境と、センサーが使えずに映像からも向きがわからない時（カメラなし・暗い）。
+function fingerAim(){
+  if(demoMode&&!liteMode)return true;
+  if(sensorsLive())return false;
+  const video=mediaStream?.getVideoTracks().some(t=>t.readyState==='live'&&!t.muted);
+  return liteMode||!video||darkView;
+}
+function sensorNoteNeeded(){
+  if(!(mediaStream||liteMode))return false;
+  return sensors.state==='denied'||(sensors.state==='unavailable'&&navigator.maxTouchPoints>0);
+}
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const format = value => value.replace('T',' ').replaceAll('-','.');
 const sleep = ms => new Promise(resolve => setTimeout(resolve,ms));
@@ -494,26 +678,61 @@ function createRows(scene) {
 function dateKey(date) { return date.startsWith('BC') ? '!'+String(9999-Number(date.slice(2,6))).padStart(4,'0')+date.slice(6) : date; }
 function line(row) { return `${format(row.date)} ${row.type}`; }
 function releaseMedia() { mediaRequest++;if(mediaStream) mediaStream.getTracks().forEach(track=>track.stop());mediaStream=null;micSource?.disconnect();analyser?.disconnect();micSource=null;analyser=null;spectrum=null;sensingContext?.close().catch(()=>{});sensingContext=null;$('camera').srcObject=null;$('camera').hidden=true;$('media').textContent='カメラ・マイクを使う';clearReaction(); }
-function clearReaction(){stopAnomaly();strength=0;displayedStrength=0;exploring=false;activityUntil=0;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;sceneMotion={x:0,y:0};demoPoint=null;radarTrace=window.KaiiSensing.createRadar();lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
+function clearReaction(){stopAnomaly();strength=0;displayedStrength=0;exploring=false;aimed=false;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;demoPoint=null;radarTrace=window.KaiiSensing.createRadar();shownTrace=null;manualAim={yaw:0,pitch:0};flowYaw=null;lastImageChange=1;darkView=false;conditions=window.KaiiSensing.createConditions();rush=null;specialHold=null;lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
 function paintReaction(){
   const locked=lockState.locked,radar=$('radar');
-  const progress=Math.min(1,lockState.trace/lockState.required);
+  const progress=locked?1:Math.min(1,lockState.trace/lockState.required);
   if(locked||exploring)displayedStrength=locked?strength:strength*(.35+.65*progress);
-  $('search').classList.toggle('exploring',exploring);
+  $('search').classList.toggle('exploring',exploring);$('search').classList.toggle('aimed',aimed&&!locked);
   radar.style.setProperty('--reaction',displayedStrength.toFixed(3));radar.dataset.strength=displayedStrength.toFixed(3);
-  radar.style.setProperty('--trace-x',(radarTrace.x*50).toFixed(2)+'%');radar.style.setProperty('--trace-y',(radarTrace.y*50).toFixed(2)+'%');
+  // 探索の進み具合は、中央の照準の輪が満ちていくことで見せる。
+  radar.style.setProperty('--progress',progress.toFixed(3));
   $('search').classList.toggle('locked',locked);$('measure').disabled=!locked;
   $('signal-label').textContent=locked?'反応捕捉':displayedStrength>.55?'反応増大':displayedStrength>.2?'微弱反応':'探知中';
   document.querySelector('.radar-label').textContent=locked?'LOCKED':'SCANNING';
-  if($('show-numbers').checked){const top=Object.entries(patternStrengths).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>scenes[k].name+' '+v.toFixed(2)).join('／');$('debug-numbers').textContent=(top||'入力待ち')+'　探索 '+Math.round(100*Math.min(1,lockState.trace/lockState.required))+'%';}
+  if($('show-numbers').checked){
+    const top=Object.entries(patternStrengths).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>scenes[k].name+' '+v.toFixed(2)).join('／');
+    const aim=currentAim(),f=n=>n==null?'—':Math.round(n);
+    const timers=Object.entries(conditions.timers).filter(([k,v])=>v>0&&sceneForCondition(k)).map(([k,v])=>SENSOR_CONDITIONS[k]+' '+(v/1000).toFixed(1)+'秒').join('／');
+    $('debug-numbers').textContent=(top||'入力待ち')+'　探索 '+Math.round(100*progress)+'%'
+      +`\nセンサー ${sensors.state}　向き ${f(((aim.yaw%360)+360)%360)}° 仰角 ${f(aim.pitch)}° 回転 ${f(sensors.rotation)}°/秒 方位 ${f(sensors.absCamera)}°${darkView?'　暗い':''}${timers?'\n'+timers:''}`;
+  }
   $('debug-numbers').hidden=!$('show-numbers').checked;
   syncStartButton();
   if(anomaly){$('signal-label').textContent=Math.random()<.6?'反応異常':'異常反応';document.querySelector('.radar-label').textContent=['LOCKED','ERROR','??????','L0CK3D','OVERLOAD'][Math.floor(Math.random()*5)];}
+}
+// 点の位置は、センサーの細かい動きに合わせて毎フレーム描く。逃げた時は素早く、ふだんは滑らかに追う。
+function paintTrace(now){
+  requestAnimationFrame(paintTrace);
+  const dt=Math.min(100,now-lastTracePaint);lastTracePaint=now;
+  if(phase!=='search')return;
+  const S=window.KaiiSensing,aim=currentAim();
+  if(radarTrace.yaw==null)shownTrace=null;
+  else if(!shownTrace)shownTrace={...radarTrace};
+  else{const k=1-Math.exp(-dt/110);shownTrace.yaw+=S.wrap180(radarTrace.yaw-shownTrace.yaw)*k;shownTrace.pitch+=(radarTrace.pitch-shownTrace.pitch)*k;}
+  let pos=S.aimPosition(shownTrace||radarTrace,aim);
+  if(rush){
+    // 特別条件の動作と合致したら、点が一瞬（約0.3秒）で真ん中へ来る。
+    const t=Math.min(1,(now-rush.start)/300),e=t*t;
+    pos={x:rush.from.x*(1-e),y:rush.from.y*(1-e),outside:false};
+  }
+  const radar=$('radar');
+  radar.style.setProperty('--trace-x',(pos.x*50).toFixed(2)+'%');radar.style.setProperty('--trace-y',(pos.y*50).toFixed(2)+'%');
+  $('search').classList.toggle('edge',!!pos.outside&&!lockState.locked);
+}
+// 特別条件の成立：点を真ん中へ走らせ、約0.3秒後にその怪異を捕捉する。
+function startRush(condition){
+  if(rush||lockState.locked||phase!=='search')return;
+  const key=sceneForCondition(condition);if(!key)return;
+  const pos=window.KaiiSensing.aimPosition(shownTrace||radarTrace,currentAim());
+  rush={condition,key,start:performance.now(),from:{x:pos.x,y:pos.y}};
+  track('special_condition',{condition});
 }
 function senseEnvironment(){
   const now=performance.now(),dt=now-lastSense;lastSense=now;
   if(phase!=='search')return;
   if(document.hidden){clearReaction();return;}
+  const S=window.KaiiSensing;
   let visual=null,audio=null;
   if(demoMode){
     ({visual,audio}=demoEnvironment(liteMode?LITE_ROUTINE[liteIndex%LITE_ROUTINE.length]:$('environment').value));
@@ -521,38 +740,73 @@ function senseEnvironment(){
     const video=$('camera');
     if(mediaStream?.getVideoTracks().some(t=>t.readyState==='live'&&!t.muted)&&video.readyState>=2){
       try{
-        sampleContext.drawImage(video,0,0,64,48);const pixels=sampleContext.getImageData(0,0,64,48).data;visual=window.KaiiSensing.imageFeatures(pixels);
-        if(now-lastVisualSample>=250){sceneMotion=window.KaiiSensing.imageMotion(previousPixels,pixels);if(window.KaiiSensing.imageChange(previousPixels,pixels)>.025)activityUntil=now+350;previousPixels=pixels;lastVisualSample=now;}
+        sampleContext.drawImage(video,0,0,64,48);const pixels=sampleContext.getImageData(0,0,64,48).data;visual=S.imageFeatures(pixels);
+        darkView=visual.brightness<.08;
+        if(previousPixels){
+          lastImageChange=S.imageChange(previousPixels,pixels);
+          // センサーが使えない時は、映像の流れからカメラの向きの変化を推し量る（縦長の映像なら横約50度・縦約65度）。
+          const flow=darkView?{x:0,y:0}:S.imageMotion(previousPixels,pixels),portrait=video.videoHeight>video.videoWidth;
+          const dyaw=-flow.x*(portrait?50:65)/64,dpitch=flow.y*(portrait?65:50)/48;
+          flowYaw=darkView?null:(flowYaw??0)+dyaw;
+          if(!sensorsLive()){manualAim.yaw+=dyaw;manualAim.pitch=Math.max(-80,Math.min(80,manualAim.pitch+dpitch));}
+        }
+        previousPixels=pixels;lastVisualSample=now;
       }catch{}
-    }
+    }else{darkView=false;flowYaw=null;}
     if(analyser&&sensingContext?.state==='running'&&mediaStream?.getAudioTracks().some(t=>t.readyState==='live'&&!t.muted)){
-      analyser.getByteFrequencyData(spectrum);audio=window.KaiiSensing.audioFeatures(spectrum,sensingContext.sampleRate,analyser.fftSize);
-      if(now-lastAudioSample>=250){if(!visual){const change=window.KaiiSensing.soundChange(previousAudio,audio);if(change>.18)activityUntil=now+350;sceneMotion={x:previousAudio?(audio.bands[2]-previousAudio.bands[2])*2:0,y:previousAudio?(audio.bands[0]-previousAudio.bands[0])*2:0};}previousAudio=audio;lastAudioSample=now;}
+      analyser.getByteFrequencyData(spectrum);audio=S.audioFeatures(spectrum,sensingContext.sampleRate,analyser.fftSize);
+      previousAudio=audio;lastAudioSample=now;
     }
   }
   if(!visual&&!audio){if(strength||candidate||exploring||previousPixels||previousAudio)clearReaction();return;}
-  exploring=now<activityUntil;
-  if(!exploring&&!lockState.locked){paintReaction();return;}
+  if(sensors.state==='on'&&now-sensors.at>300)sensors.rotation=null;
+  // センサーを使う特別条件は、サーチ中いつも並行して見張る（省電力観測モードでは出ない）。
+  if(!liteMode&&!lockState.locked&&!rush){
+    const live=sensorsLive();
+    const met=S.updateConditions(conditions,{
+      axes:live?sensors.axes:null,absolute:live&&now-sensors.absAt<1000&&sensors.absCamera!=null?{camera:sensors.absCamera,top:sensors.absTop}:null,
+      rotation:live?sensors.rotation:null,acceleration:live?sensors.acceleration:null,
+      dark:!demoMode&&darkView,imageStill:lastImageChange<.01,centerTouch:!!radarTouch?.center,
+      yaw:live?sensors.yaw:null,flowYaw:demoMode?null:flowYaw
+    },dt);
+    if(met)startRush(met);
+  }
+  const aim=currentAim();
+  const fled=S.updateRadar(radarTrace,{active:!rush,locked:lockState.locked,aim,dt});
+  // 点が逃げると、探索の進み具合が少し減る（大きく逃げた時は多めに）。
+  if(fled&&!lockState.locked)lockState.trace=Math.max(0,lockState.trace-lockState.required*(fled===2?.2:.08));
+  const pos=S.aimPosition(radarTrace,aim);
+  aimed=!pos.outside&&pos.distance<=S.AIM.center;
+  exploring=aimed||!!rush;
+  if(rush&&now-rush.start>=300){
+    candidate=rush.key;specialHold=rush.key;patternStrengths[rush.key]=1;
+    lockState.trace=lockState.required;rush=null;
+  }
+  if(!exploring&&!lockState.locked&&!specialHold){paintReaction();return;}
   const smoothing=1-Math.exp(-Math.min(dt,250)/230),mode=$('specimen').value;
   const keys=liteMode?[LITE_ROUTINE[liteIndex%LITE_ROUTINE.length]]:mode==='auto'?Object.keys(scenes):[mode],clock=new Date();
   for(const key of keys){
+    if(key===specialHold)continue;
     const scene=scenes[key];
     // 4時44分は時刻だけで成立する。確認用に手動指定した時は時刻を問わない。
-    const match=scene.condition==='time444'?(mode===key||isFourFortyFour(clock)?1:0):window.KaiiSensing.score(key,visual,audio)*hourFactor(scene,clock);
+    // センサーの特別条件の怪異は、色と音では出ない（条件の成立で startRush から捕捉する）。
+    const match=scene.condition==='time444'?(mode===key||isFourFortyFour(clock)?1:0):scene.condition?0:S.score(key,visual,audio)*hourFactor(scene,clock);
     patternStrengths[key]=scene.condition==='time444'?match:(patternStrengths[key]||0)+(match-(patternStrengths[key]||0))*smoothing;
   }
-  const next=window.KaiiSensing.candidateFor(patternStrengths,candidate,lockState.locked);
+  if(specialHold)patternStrengths[specialHold]=1;
+  const next=specialHold||S.candidateFor(patternStrengths,candidate,lockState.locked);
   if(next!==candidate){
     // 探した量は利用者の行動なので、候補が入れ替わってもそのまま引き継ぐ（揺れのたびにやり直さない）。
-    const kept=lockState.trace;lockState=window.KaiiSensing.createLock();lockState.trace=Math.min(lockState.required,kept);
-    if(!candidate||!next)radarTrace=window.KaiiSensing.createRadar();
+    const kept=lockState.trace;lockState=S.createLock();lockState.trace=Math.min(lockState.required,kept);
     candidate=next;if(scenes[next]?.condition==='time444')lockState.required=Math.min(lockState.required,4000);
   }
   strength=candidate?patternStrengths[candidate]:Math.max(0,...Object.values(patternStrengths));
   const wasLocked=lockState.locked;
-  window.KaiiSensing.updateLock(lockState,strength,dt,exploring);
-  window.KaiiSensing.updateRadar(radarTrace,{active:exploring,locked:lockState.locked,progress:lockState.trace/lockState.required,strength,motion:sceneMotion,dt});paintReaction();
-  if(!wasLocked&&lockState.locked){lockSound();track('capture',{anomaly:scenes[candidate]?.name||'',mode:liteMode?'lite':'camera'});if($('special-test').checked||scenes[candidate]?.special)startAnomaly();}
+  // 特別条件で捕捉した後は、点は逃げず、反応も弱まらない。
+  if(specialHold){lockState.trace=lockState.required;lockState.locked=true;lockState.hold=0;}
+  else S.updateLock(lockState,strength,dt,exploring);
+  paintReaction();
+  if(!wasLocked&&lockState.locked){lockSound();track('capture',{anomaly:scenes[candidate]?.name||'',mode:liteMode?'lite':'camera'});if($('special-test').checked||scenes[candidate]?.special||specialHold)startAnomaly();}
   else if(wasLocked&&!lockState.locked)stopAnomaly();
 }
 // 怪異ごとの出やすい時間帯。外れていても出るが、少しだけ弱まる（同じ雰囲気の怪異の選び分け）。
@@ -575,7 +829,9 @@ function syncStartButton(){
   const idle=!mediaStream&&!demoMode;
   $('start-media').hidden=!idle;$('start-lite').hidden=!idle;
   $('start-note').hidden=!(idle||liteMode);
-  if(liteMode)$('start-note').textContent='省電力観測モード：レーダーを指でなぞって探索';
+  if(liteMode)$('start-note').textContent=sensorsLive()?'省電力観測モード：スマホを動かして、レーダーの点を真ん中へ':'省電力観測モード：レーダーの点を指で真ん中へ';
+  // センサーを拒否された時などは、控えめに案内する（特別条件があることは明かさない）。
+  $('sensor-note').hidden=!(phase==='search'&&sensorNoteNeeded());
 }
 function setSoundLabel(){$('sound-toggle').textContent=$('sound').checked?'音 ON':'音 OFF';$('sound-toggle').setAttribute('aria-pressed',String($('sound').checked));}
 function resumeAudio() {
@@ -917,9 +1173,10 @@ for(const key of Object.keys(scenes))if(window.KaiiSensing.profiles[key])$('envi
 $('environment').append(new Option('明るい無音（何も出ない）','neutral'));
 $('start-media').addEventListener('click',()=>{liteMode=false;$('media').click();});
 $('start-lite').addEventListener('click',()=>{
+  requestSensors();
   if(mediaStream)releaseMedia();
   liteMode=true;demoMode=true;$('demo-environment').hidden=true;track('lite_start');
-  $('media-status').textContent='省電力観測モード／レーダーをなぞって探索';clearReaction();resumeAudio();syncStartButton();
+  $('media-status').textContent='省電力観測モード／点を真ん中に合わせて探索';clearReaction();resumeAudio();syncStartButton();
 });
 $('open-manual').addEventListener('click',()=>{$('manual').hidden=false;$('manual').scrollTop=0;track('manual_open');});
 $('campaign-link').addEventListener('click',()=>track('booking_click',{anomaly:selected?.name||''}));
@@ -943,12 +1200,34 @@ $('demo').addEventListener('click',()=>{
 });
 $('environment').addEventListener('change',clearReaction);
 // Production input comes from image/audio changes. Dragging is only a demo control.
-$('radar').addEventListener('pointerdown',event=>{if(demoMode&&phase==='search'){demoDragging=true;demoPoint={x:event.clientX,y:event.clientY};$('radar').setPointerCapture(event.pointerId);}});
-$('radar').addEventListener('pointermove',event=>{if(demoMode&&demoDragging&&phase==='search'){activityUntil=performance.now()+350;if(demoPoint)sceneMotion={x:Math.max(-1,Math.min(1,(event.clientX-demoPoint.x)/16)),y:Math.max(-1,Math.min(1,(event.clientY-demoPoint.y)/16))};demoPoint={x:event.clientX,y:event.clientY};}});
-for(const event of ['pointerup','pointercancel','lostpointercapture'])$('radar').addEventListener(event,()=>{demoDragging=false;demoPoint=null;});
+// レーダーに触れている指。「置いて中央に指」の判定と、指でなぞって点を動かす時に使う。
+function radarTouchAt(event){
+  const rect=$('radar').getBoundingClientRect(),r=rect.width/2;
+  const x=(event.clientX-rect.left-r)/r,y=(event.clientY-rect.top-r)/r;
+  return {x,y,center:Math.hypot(x,y)<=.2};
+}
+$('radar').addEventListener('pointerdown',event=>{
+  if(phase!=='search')return;
+  radarTouch=radarTouchAt(event);$('radar').setPointerCapture(event.pointerId);
+  if(fingerAim()){demoDragging=true;demoPoint={x:event.clientX,y:event.clientY};}
+});
+$('radar').addEventListener('pointermove',event=>{
+  if(phase!=='search'||!radarTouch)return;
+  radarTouch=radarTouchAt(event);
+  // 指でなぞると点がその方向へ動く（照準の向きを逆へずらす）。
+  if(demoDragging&&demoPoint&&fingerAim()){
+    const r=$('radar').getBoundingClientRect().width/2,A=window.KaiiSensing.AIM;
+    manualAim.yaw-=(event.clientX-demoPoint.x)/r*A.yaw;
+    manualAim.pitch=Math.max(-80,Math.min(80,manualAim.pitch+(event.clientY-demoPoint.y)/r*A.pitch));
+  }
+  demoPoint={x:event.clientX,y:event.clientY};
+});
+for(const event of ['pointerup','pointercancel','lostpointercapture'])$('radar').addEventListener(event,()=>{demoDragging=false;demoPoint=null;radarTouch=null;});
 $('media').addEventListener('click',async()=>{
   if(mediaStream){releaseMedia();$('media-status').textContent='背景は仮画像／仮の環境でも試せます';return;}
   if(!navigator.mediaDevices?.getUserMedia){$('media-status').textContent='カメラ・マイクを利用できません。仮の環境で試せます。';return;}
+  // 動き・向きのセンサーの許可も、この1回の操作でまとめて求める（カメラ・マイクを待つ前に）。
+  requestSensors();
   $('media').disabled=true;const request=++mediaRequest;
   demoMode=false;liteMode=false;$('demo-environment').hidden=true;$('demo').textContent='仮の環境で試す';clearReaction();resumeAudio();
   try{sensingContext=new (window.AudioContext||window.webkitAudioContext)();sensingContext.resume().catch(()=>{});}catch{}
@@ -976,10 +1255,20 @@ $('media').addEventListener('click',async()=>{
 });
 let sensingTimer=setInterval(senseEnvironment,100);
 addEventListener('visibilitychange',()=>{if(document.hidden)stopEffects();clearReaction();clearTimeout(soundTimer);if(!document.hidden){sensingContext?.resume().catch(()=>{});scheduleSound();}});
-addEventListener('pagehide',()=>{stopAnomaly();stopEffects();generation++;stopDigitalRain();releaseMedia();clearTimeout(soundTimer);clearInterval(sensingTimer);audioContext?.close();audioContext=null;clickBuffers=null;confirmationVoices.clear();});
-addEventListener('pageshow',event=>{if(event.persisted){sensingTimer=setInterval(senseEnvironment,100);reset();}});
+addEventListener('pagehide',()=>{stopSensors();stopAnomaly();stopEffects();generation++;stopDigitalRain();releaseMedia();clearTimeout(soundTimer);clearInterval(sensingTimer);audioContext?.close();audioContext=null;clickBuffers=null;confirmationVoices.clear();});
+addEventListener('pageshow',event=>{if(event.persisted){if(sensors.granted)startSensors();sensingTimer=setInterval(senseEnvironment,100);reset();}});
 reset();
 setInterval(refreshCampaign,1000);
+requestAnimationFrame(paintTrace);
+// 確認用：センサーの特別条件をその場で成立させる（本番版では上部の作業欄ごと隠れる）。
+for(const [key,label] of Object.entries(SENSOR_CONDITIONS))if(sceneForCondition(key))$('force-condition').append(new Option(label,key));
+$('force-condition').closest('label').hidden=$('force-condition').options.length<2;
+$('force-condition').addEventListener('change',()=>{
+  const key=$('force-condition').value;$('force-condition').value='';
+  if(!key)return;
+  if(phase!=='search'||!(mediaStream||demoMode)||liteMode){$('message').textContent='確認用：カメラ・マイクか「仮の環境で試す」で探知を始めてから選んでください。';return;}
+  startRush(key);
+});
 </script>
 </body>
 </html>
