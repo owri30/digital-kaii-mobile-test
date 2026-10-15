@@ -837,7 +837,7 @@ function bootFinish(run,hasVideo){
       if(run!==bootRun){clearInterval(bootTimer);return done();}
       const t=(performance.now()-start)/BOOT_AFTER_MS;bootTotal(.08+.92*t);
       $('boot-rest').textContent=t<1?`残り ${Math.max(0,(BOOT_AFTER_MS*(1-t))/1000).toFixed(1)}秒`:'完了';
-      if(t>=1){clearInterval(bootTimer);setTimeout(()=>{if(run===bootRun)$('boot').hidden=true;done();},120);}
+      if(t>=1){clearInterval(bootTimer);setTimeout(()=>{if(run===bootRun){$('boot').hidden=true;syncMotor();}done();},120);}
     },50);
   });
 }
@@ -1077,7 +1077,7 @@ function syncMotor(){
     for(const source of motorVoice.sources)source.start(now);
   }
   // 捕捉音と重なる時は控えめに、数字の確定・集約・絵の登場中はさらに下げる。
-  const level=phase==='search'?(lockState.locked?.007:.016):.003;
+  const level=phase==='search'?(!$('boot').hidden?.048:lockState.locked?.014:.032):.003;
   motorVoice.gain.gain.setTargetAtTime(level,now,.12);
 }
 // 段階ごとの平均間隔（ミリ秒）と、連打になる確率。最後は捕捉中。
