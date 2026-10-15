@@ -77,6 +77,36 @@ html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:
 .debug-numbers{white-space:pre-line}
 #search.no-trace .signal{opacity:0}
 .description-link{display:inline-block;margin-top:10px;font-size:14px;color:var(--green)}
+/* 起動シーケンス（ロード画面）：許可が出てから約2秒で測定に移る。 */
+.boot{position:absolute;inset:0;z-index:15;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:28px 20px;background:#050b0aee;font:12px/1.5 Consolas,"Courier New",monospace;color:#9fc3a8;letter-spacing:.02em}
+.boot-title{margin:0;color:#d6f5c4;letter-spacing:.2em;font-size:11px}
+#boot-lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px;min-height:15.5em}
+#boot-lines li{display:grid;grid-template-columns:1fr 64px 52px;align-items:center;gap:8px;opacity:.9}
+#boot-lines li.done{opacity:.6}
+.boot-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.boot-line-bar{height:5px;border:1px solid #6f8f78;overflow:hidden}
+.boot-line-bar i{display:block;height:100%;width:0;background:#b1d3b4;transition:width linear}
+#boot-lines li.pending .boot-line-bar i{width:35%;animation:boot-wait 1s linear infinite}
+@keyframes boot-wait{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
+.boot-state{text-align:right;color:#d6f5c4}
+.boot-total{border-top:1px solid #647d6960;padding-top:10px}
+.boot-bar{height:14px;border:1px solid #9fc3a8;padding:2px}
+#boot-fill{display:block;height:100%;width:0;background:repeating-linear-gradient(90deg,#b1d3b4 0 10px,#8fb79a 10px 12px);transition:width .05s linear}
+.boot-meta{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:11px;color:#8aa995}
+/* カメラを使った測定画面の計器表示。操作の邪魔をしないよう、触れても反応しない。 */
+.hud{position:absolute;inset:0;z-index:0;pointer-events:none;--noise:.08}
+.hud-corner{position:absolute;width:22px;height:22px;border:2px solid #b1d3b4aa}
+.hud-corner.tl{top:10px;left:10px;border-right:0;border-bottom:0}.hud-corner.tr{top:10px;right:10px;border-left:0;border-bottom:0}
+.hud-corner.bl{bottom:10px;left:10px;border-right:0;border-top:0}.hud-corner.br{bottom:10px;right:10px;border-left:0;border-top:0}
+.hud-noise{position:absolute;inset:0;background:repeating-linear-gradient(0deg,#d6f5c414 0 1px,transparent 1px 3px);opacity:calc(.25 + var(--noise)*.75);mix-blend-mode:screen;animation:hud-jitter .18s steps(2) infinite}
+@keyframes hud-jitter{50%{transform:translateY(1px)}}
+.hud-panel{position:absolute;top:16px;left:18px;display:flex;flex-direction:column;gap:3px;font:10px/1.3 Consolas,"Courier New",monospace;color:#b1d3b4;text-shadow:0 1px 3px #000}
+.hud-norec{color:#d6f5c4;letter-spacing:.05em}
+.hud-panel canvas{width:120px;border:1px solid #647d6980;background:#0008}
+@media (prefers-reduced-motion:reduce){.hud-noise{animation:none}#boot-lines li.pending .boot-line-bar i{animation:none}}
+.hud-panel{top:12px;left:16px;right:118px;gap:2px}
+.hud-row{display:flex;align-items:flex-end;gap:10px;white-space:nowrap}
+.hud-panel canvas{width:96px}
 </style>
 </head>
 <body>
@@ -85,6 +115,8 @@ html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:
     <video id="camera" autoplay playsinline muted hidden></video><div class="ambient"></div>
     <canvas id="digital-rain" aria-hidden="true" hidden></canvas>
     <div id="screen-flash" aria-hidden="true"></div>
+    <div id="hud" class="hud" hidden aria-hidden="true"><span class="hud-corner tl"></span><span class="hud-corner tr"></span><span class="hud-corner bl"></span><span class="hud-corner br"></span><div class="hud-noise"></div><div class="hud-panel"><div class="hud-row"><span class="hud-norec">● NO RECORD／非保存</span></div><div class="hud-row"><span id="hud-bearing">方位 ---°　仰角 ---°</span><span id="hud-scan">走査 0/120°</span></div><div class="hud-row"><canvas id="hud-color" width="96" height="6"></canvas><canvas id="hud-wave" width="96" height="14"></canvas></div></div></div>
+    <section id="boot" class="boot" hidden aria-label="起動中"><p class="boot-title">TIME-PHASE OBSERVER // BOOT</p><ol id="boot-lines"></ol><div class="boot-total"><div class="boot-bar"><span id="boot-fill"></span></div><div class="boot-meta"><span id="boot-percent">0%</span><span id="boot-size"></span><span id="boot-rest"></span></div></div></section>
     <div class="top-controls"><button id="open-manual" type="button">取扱説明書</button><button id="sound-toggle" type="button" aria-pressed="true">音 ON</button></div>
     <div class="brand"><span>時相観測装置</span><h1>デジタル怪異測定器</h1></div>
     <section id="search" aria-label="サーチ">
@@ -710,7 +742,93 @@ function createRows(scene) {
 // 紀元前（BC0046-…）を西暦より前に並べるための比較用の文字列。
 function dateKey(date) { return date.startsWith('BC') ? '!'+String(9999-Number(date.slice(2,6))).padStart(4,'0')+date.slice(6) : date; }
 function line(row) { return `${format(row.date)} ${row.type}`; }
-function releaseMedia() { mediaRequest++;if(mediaStream) mediaStream.getTracks().forEach(track=>track.stop());mediaStream=null;micSource?.disconnect();analyser?.disconnect();micSource=null;analyser=null;spectrum=null;sensingContext?.close().catch(()=>{});sensingContext=null;$('camera').srcObject=null;$('camera').hidden=true;$('media').textContent='カメラ・マイクを使う';clearReaction(); }
+// 起動シーケンス（2026-10-15ユーザー指定）：カメラとマイクを起動する時のロード画面。
+// 全部読ませる必要はないので、一瞬で終わる行と長くかかる行を混ぜる。許可が出てから約2秒で測定に移る。
+// 行の状態は、実際に起動できたもの（カメラ・マイク・センサー）に合わせる。
+const BOOT_AFTER_MS=2000;
+const BOOT_STEPS=[
+  ['音響受容体 接続',80,()=>analyser?'OK':'未接続'],
+  ['姿勢制御ジャイロ 同期',150,()=>['on','waiting'].includes(sensors.state)?'OK':'未接続'],
+  ['地磁気コンパス 較正',300,()=>sensors.absCamera!=null?'OK':['on','waiting'].includes(sensors.state)?'較正待ち':'未接続'],
+  ['色相スペクトル解析器 展開',60],
+  ['周波数分光シークエンサー 起動',120],
+  ['クロノ・アナライザ 初期化',40],
+  [()=>`時相痕跡データベース 照合準備（${Object.keys(scenes).length}件）`,380],
+  ['観測座標 固定：現在地点 半径2m',90],
+  ['時間軸ドリフト補正 ±0.000秒',200],
+  ['位相同期ループ ロック',30],
+  ['時空境界センサー 感度調整',110],
+  ['痕跡増幅回路 充電',160],
+  ['残留思念フィルタ 適用',20],
+  ['観測ログ暗号化',40],
+  ['異常値遮断プロトコル 待機',100,()=>'待機'],
+  ['全系統正常 ── 走査を開始してください',120,()=>''],
+];
+let bootRun=0,bootTimer=null;
+function bootLine(name,{state='',pending=false,ms=0}={}){
+  const li=document.createElement('li');li.className=pending?'pending':'';
+  li.innerHTML='<span class="boot-name"></span><span class="boot-line-bar"><i></i></span><span class="boot-state"></span>';
+  li.querySelector('.boot-name').textContent=name;
+  const fill=li.querySelector('i');
+  if(!pending){fill.style.transitionDuration=ms+'ms';setTimeout(()=>{fill.style.width='100%';},16);setTimeout(()=>{li.querySelector('.boot-state').textContent=state;li.classList.add('done');},ms);}
+  $('boot-lines').append(li);
+  const list=$('boot-lines');while(list.children.length>9)list.firstElementChild.remove();
+  return li;
+}
+function bootTotal(progress){
+  const p=Math.max(0,Math.min(1,progress)),total=1284.6;
+  $('boot-fill').style.width=(p*100).toFixed(1)+'%';$('boot-percent').textContent=Math.floor(p*100)+'%';
+  $('boot-size').textContent=`時相データ ${(total*p).toFixed(1)} / ${total} MB`;
+}
+// 許可を待つ間：最初の2行と、カメラの接続待ちの行を出す。
+function bootShow(){
+  const run=++bootRun;clearInterval(bootTimer);
+  $('boot-lines').replaceChildren();$('boot').hidden=false;$('boot-rest').textContent='許可を待っています';
+  bootTotal(.03);
+  bootLine('時相観測装置 起動シーケンス開始',{state:'OK'});
+  bootLine('記録媒体 非保存モード',{state:'OK'});
+  bootLine('光学受容体 接続',{pending:true});
+  return run;
+}
+function bootHide(){bootRun++;clearInterval(bootTimer);$('boot').hidden=true;}
+// 許可が出たら、残りを約2秒で流して測定に移る。
+function bootFinish(run,hasVideo){
+  return new Promise(done=>{
+    if(run!==bootRun)return done();
+    const camera=$('boot-lines').querySelector('li.pending');
+    if(camera){camera.classList.remove('pending');camera.querySelector('i').style.width='100%';camera.querySelector('.boot-state').textContent=hasVideo?'OK':'未接続';camera.classList.add('done');}
+    const start=performance.now();let at=0;
+    for(const [name,ms,state] of BOOT_STEPS){
+      setTimeout(()=>{if(run===bootRun)bootLine(typeof name==='function'?name():name,{ms,state:state?state():'OK'});},at);at+=ms;
+    }
+    bootTimer=setInterval(()=>{
+      if(run!==bootRun){clearInterval(bootTimer);return done();}
+      const t=(performance.now()-start)/BOOT_AFTER_MS;bootTotal(.08+.92*t);
+      $('boot-rest').textContent=t<1?`残り ${Math.max(0,(BOOT_AFTER_MS*(1-t))/1000).toFixed(1)}秒`:'完了';
+      if(t>=1){clearInterval(bootTimer);setTimeout(()=>{if(run===bootRun)$('boot').hidden=true;done();},120);}
+    },50);
+  });
+}
+// カメラを使った測定画面の計器表示：実際に測っている色と音、向き、走査の進み、保存しないこと。
+let hudVisual=null,hudAudio=null;
+function paintHud(){
+  const video=mediaStream?.getVideoTracks().some(t=>t.readyState==='live');
+  const show=!!video&&phase==='search'&&!demoMode&&$('boot').hidden;
+  $('hud').hidden=!show;if(!show)return;
+  const aim=currentAim(),f=n=>Math.round(n),sign=n=>(n>=0?'+':'')+f(n);
+  const yaw=((aim.yaw%360)+360)%360;
+  $('hud-bearing').textContent=sensors.absCamera!=null&&sensorsLive()?`方位 ${f(sensors.absCamera)}°　仰角 ${sign(aim.pitch)}°`:`向き ${f(yaw)}°　仰角 ${sign(aim.pitch)}°`;
+  const cov=Object.keys(scan.bins).length*10;
+  $('hud-scan').textContent=scan.found||lockState.locked?'走査 完了':`走査 ${Math.min(120,cov)}/120°`;
+  const c=$('hud-color').getContext('2d'),w=$('hud-color').width,h=$('hud-color').height;
+  c.clearRect(0,0,w,h);
+  if(hudVisual?.color){let x=0;hudVisual.color.forEach((v,i)=>{const width=v*w;c.fillStyle=i<12?`hsl(${i*30+15},70%,55%)`:'#8a948e';c.fillRect(x,0,width,h);x+=width;});}
+  const a=$('hud-wave').getContext('2d'),aw=$('hud-wave').width,ah=$('hud-wave').height;
+  a.clearRect(0,0,aw,ah);a.fillStyle='#b1d3b4';
+  if(hudAudio?.sound){const max=Math.max(...hudAudio.sound,.0001),gain=Math.min(1,(hudAudio.loudness||0)*3);const bw=aw/hudAudio.sound.length;
+    hudAudio.sound.forEach((v,i)=>{const bh=Math.max(1,v/max*gain*ah);a.fillRect(i*bw,ah-bh,bw-1,bh);});}
+}
+function releaseMedia() { mediaRequest++;bootHide();if(mediaStream) mediaStream.getTracks().forEach(track=>track.stop());mediaStream=null;micSource?.disconnect();analyser?.disconnect();micSource=null;analyser=null;spectrum=null;sensingContext?.close().catch(()=>{});sensingContext=null;$('camera').srcObject=null;$('camera').hidden=true;$('media').textContent='カメラ・マイクを使う';clearReaction(); }
 function clearReaction(){stopAnomaly();strength=0;displayedStrength=0;exploring=false;aimed=false;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;demoPoint=null;radarTrace=window.KaiiSensing.createRadar();shownTrace=null;manualAim={yaw:0,pitch:0};flowYaw=null;lastImageChange=1;darkView=false;conditions=window.KaiiSensing.createConditions();rush=null;specialHold=null;lastAim=null;scan={found:false,bins:{},candidate:null};lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
 function paintReaction(){
   const locked=lockState.locked,radar=$('radar');
@@ -732,6 +850,7 @@ function paintReaction(){
   }
   $('debug-numbers').hidden=!$('show-numbers').checked;
   syncStartButton();
+  paintHud();
   if(anomaly){$('signal-label').textContent=Math.random()<.6?'反応異常':'異常反応';document.querySelector('.radar-label').textContent=['LOCKED','ERROR','??????','L0CK3D','OVERLOAD'][Math.floor(Math.random()*5)];}
 }
 // 点の位置は、センサーの細かい動きに合わせて毎フレーム描く。逃げた時は素早く、ふだんは滑らかに追う。
@@ -754,6 +873,8 @@ function paintTrace(now){
   $('search').classList.toggle('edge',!!pos.outside&&!lockState.locked);
   // 見回して点が現れるまで（と、大きく逃げて消えた後）は点を出さない。
   $('search').classList.toggle('no-trace',!scan.found&&!rush&&!lockState.locked);
+  // 計器表示のノイズは、点が真ん中に近いほど強くなる。
+  $('hud').style.setProperty('--noise',(scan.found&&!lockState.locked?Math.max(0,1-(pos.distance??1)):lockState.locked?.6:.08).toFixed(2));
 }
 // 特別条件の成立：点を真ん中へ走らせ、約0.3秒後にその怪異を捕捉する。
 function startRush(condition){
@@ -793,6 +914,7 @@ function senseEnvironment(){
       previousAudio=audio;lastAudioSample=now;
     }
   }
+  hudVisual=visual;hudAudio=audio;
   if(!visual&&!audio){if(strength||candidate||exploring||previousPixels||previousAudio)clearReaction();return;}
   if(sensors.state==='on'&&now-sensors.at>300)sensors.rotation=null;
   // センサーを使う特別条件は、サーチ中いつも並行して見張る（省電力観測モードでは出ない）。
@@ -1283,7 +1405,7 @@ $('media').addEventListener('click',async()=>{
   if(!navigator.mediaDevices?.getUserMedia){$('media-status').textContent='カメラ・マイクを利用できません。仮の環境で試せます。';return;}
   // 動き・向きのセンサーの許可も、この1回の操作でまとめて求める（カメラ・マイクを待つ前に）。
   requestSensors();
-  $('media').disabled=true;const request=++mediaRequest;
+  $('media').disabled=true;const request=++mediaRequest;const boot=bootShow();
   demoMode=false;liteMode=false;$('demo-environment').hidden=true;$('demo').textContent='仮の環境で試す';clearReaction();resumeAudio();
   try{sensingContext=new (window.AudioContext||window.webkitAudioContext)();sensingContext.resume().catch(()=>{});}catch{}
   try{
@@ -1304,6 +1426,7 @@ $('media').addEventListener('click',async()=>{
     if(!hasVideo&&!analyser)throw new Error('この環境では音の解析を開始できません。仮の環境で試せます。');
     $('media').textContent='カメラ・マイクを止める';
     track('camera_start',{video:hasVideo,audio:!!analyser});
+    await bootFinish(boot,hasVideo);
     $('media-status').textContent=`${hasVideo?'映像':''}${hasVideo&&analyser?'・':''}${analyser?'音':''}から探知中／保存・送信しません`;
   }catch(error){releaseMedia();$('media-status').textContent=error.message;track('camera_unavailable');}
   finally{$('media').disabled=false;}
