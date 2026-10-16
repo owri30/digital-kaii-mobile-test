@@ -342,7 +342,9 @@ window.KaiiReveal = {
     }
     return bands;
   }
-  function audioFeatures(spectrum,sampleRate,fftSize){
+  function audioFeatures(spectrum,sampleRate,fftSize,excludeHz=[]){
+    // Remove only the instrument motor's known tones from matching, not the original input.
+    if(excludeHz.length){spectrum=spectrum.slice();const width=sampleRate/fftSize;for(let i=1;i<spectrum.length;i++)if(excludeHz.some(hz=>Math.abs(i*width-hz)<=width))spectrum[i]=0;}
     const fine=soundBands(spectrum,sampleRate,fftSize);
     const loudness=fine.reduce((a,b)=>a+b,0)/fine.length;
     const edges=[[70,350],[350,1800],[1800,8000]];
@@ -360,15 +362,15 @@ window.KaiiReveal = {
       // there is, and the light distribution are compared separately.
       const a=chromatic(visual.color),b=chromatic(p.color);
       const match=.35*overlap(a.hue,b.hue)+.25*(1-Math.min(1,Math.abs(a.amount-b.amount)/.5))+.4*overlap(visual.light,p.light);
-      total+=closeness(match,p.width||.55)*.65;weight+=.65;
+      total+=closeness(match,p.width||.55)*.92;weight+=.92;
     }
     if(audio&&audio.sound){
       let fit;
-      if(p.quiet)fit=audio.loudness<.12?1:Math.exp(-(((audio.loudness-.12)/.08)**2));
+      if(p.quiet)fit=Math.exp(-((Math.max(0,audio.loudness-.025)/.08)**2))*Math.exp(-((audio.energy/.18)**2));
       else if(audio.energy<.025)fit=0;
       else fit=p.sound?closeness(overlap(audio.sound,p.sound),.45):0;
       const match=SOUND_FLOOR+(1-SOUND_FLOOR)*fit;
-      total+=match*.35;weight+=.35;
+      total+=match*.08;weight+=.08;
     }
     return weight?clamp(total/weight):0;
   }
@@ -383,6 +385,17 @@ window.KaiiReveal = {
     return weight?clamp(total/weight):0;
   }
   function createLock(random=Math.random){return {locked:false,hold:0,trace:0,required:6100+random()*7000};}
+  // Equal weight per direction, but only recent samples within each direction.
+  // Pausing or revisiting a direction must not preserve an old scene indefinitely.
+  function scanScores(bins,bin,scores,now){
+    for(const key of Object.keys(bins))if(now-bins[key].at>30000)delete bins[key];
+    let cell=bins[bin];
+    if(!cell||now-cell.at>1500)cell=bins[bin]={samples:[],at:now};
+    cell.at=now;cell.samples.push({...scores});if(cell.samples.length>6)cell.samples.shift();
+    const cells=Object.values(bins),means={};
+    for(const key of Object.keys(scores))means[key]=cells.reduce((sum,c)=>sum+c.samples.reduce((n,s)=>n+(s[key]||0),0)/c.samples.length,0)/cells.length;
+    return means;
+  }
   function imageChange(previous,current){
     if(!previous||previous.length!==current.length||!current.length)return 0;
     let drift=0,change=0,chroma=0,n=current.length/4;
@@ -526,11 +539,12 @@ window.KaiiReveal = {
   }
   // 探索量が満タンになった瞬間に、その時いちばん強い候補へ特定する（2026-10-15ユーザー指定）。
   // 何かしら反応（0.3以上）があれば探索は進み、強いほど速い。止まっている間は進まない。
-  function updateLock(state,strength,dt,exploring=true){
+  function updateLock(state,strength,dt,exploring=true,distance=AIM.center){
     const elapsed=Math.min(250,Math.max(0,dt));
     if(!state.locked){
       if(!exploring)return false;
-      const rate=strength>=.3?.25+.75*clamp((strength-.3)/.6):-.35;
+      const focus=1+1.5*Math.pow(clamp(1-distance/AIM.center),2);
+      const rate=strength>=.3?(.25+.75*clamp((strength-.3)/.6))*focus:-.35;
       state.trace=Math.min(state.required,Math.max(0,state.trace+elapsed*rate));
       if(state.trace>=state.required){state.locked=true;state.hold=0;}
     }else {
@@ -554,7 +568,7 @@ window.KaiiReveal = {
     for(const f of samples){f.color.forEach((v,i)=>color[i]+=v);f.light.forEach((v,i)=>light[i]+=v);}
     return {color:normalize(color),light:normalize(light),sound,quiet,width};
   }
-  const api={HUE_BINS,LIGHT_BINS,SOUND_BANDS,AIM,CONDITION_HOLD,overlap,profileFrom,graphScore,soundBands,profiles,imageFeatures,audioFeatures,score,createLock,updateLock,candidateFor,imageChange,soundChange,imageMotion,wrap180,deviceAxes,bearing,elevation,createRadar,aimPosition,updateRadar,createConditions,updateConditions};
+  const api={HUE_BINS,LIGHT_BINS,SOUND_BANDS,AIM,CONDITION_HOLD,overlap,profileFrom,graphScore,soundBands,profiles,imageFeatures,audioFeatures,score,createLock,scanScores,updateLock,candidateFor,imageChange,soundChange,imageMotion,wrap180,deviceAxes,bearing,elevation,createRadar,aimPosition,updateRadar,createConditions,updateConditions};
   if(typeof module!=='undefined')module.exports=api;else root.KaiiSensing=api;
 })(typeof window!=='undefined'?window:globalThis);
 </script><script>'use strict';
@@ -942,7 +956,7 @@ function senseEnvironment(){
       }catch{}
     }else{darkView=false;flowYaw=null;}
     if(analyser&&sensingContext?.state==='running'&&mediaStream?.getAudioTracks().some(t=>t.readyState==='live'&&!t.muted)){
-      analyser.getByteFrequencyData(spectrum);audio=S.audioFeatures(spectrum,sensingContext.sampleRate,analyser.fftSize);
+      analyser.getByteFrequencyData(spectrum);audio=S.audioFeatures(spectrum,sensingContext.sampleRate,analyser.fftSize,motorVoice?[110,220]:[]);
       previousAudio=audio;lastAudioSample=now;
     }
   }
@@ -970,14 +984,10 @@ function senseEnvironment(){
   // 見回し（2026-10-15ユーザー指定）：最初は点を出さない。左右を合わせて約120度見回すと、点がランダムな方向に現れる。
   // 怪異の候補は、見回した向きごとの反応を平均して決め（じっと見ていた所だけが強くならない）、点が現れた時に固定する。
   if(!scan.found&&!lockState.locked&&!rush&&!specialHold){
-    const bin=Math.floor((((aim.yaw%360)+360)%360)/10),cell=scan.bins[bin]||(scan.bins[bin]={n:0,sum:{}});
-    if(!scan.candidate){cell.n++;for(const key of keys)cell.sum[key]=(cell.sum[key]||0)+matchOf(key);}
-    else cell.n=Math.max(1,cell.n);
-    const cells=Object.values(scan.bins).filter(c=>c.n>0);
-    if(!scan.candidate){
-      const means={};for(const key of keys)means[key]=cells.reduce((a,c)=>a+(c.sum[key]||0)/c.n,0)/cells.length;
-      patternStrengths=means;
-    }
+    const bin=Math.floor((((aim.yaw%360)+360)%360)/10);
+    if(!scan.candidate)patternStrengths=S.scanScores(scan.bins,bin,Object.fromEntries(keys.map(key=>[key,matchOf(key)])),now);
+    else scan.bins[bin]={at:now};
+    const cells=Object.values(scan.bins);
     exploring=moved>=1.5;
     strength=scan.candidate?patternStrengths[scan.candidate]:Math.max(0,...Object.values(patternStrengths));
     if(cells.length*10>=120){
@@ -1013,7 +1023,7 @@ function senseEnvironment(){
   const wasLocked=lockState.locked;
   // 特別条件で捕捉した後は、点は逃げず、反応も弱まらない。
   if(specialHold){lockState.trace=lockState.required;lockState.locked=true;lockState.hold=0;}
-  else S.updateLock(lockState,strength,dt,exploring);
+  else S.updateLock(lockState,strength,dt,exploring,pos.distance);
   paintReaction();
   if(!wasLocked&&lockState.locked){if(scenes[candidate])imageFor(scenes[candidate]);lockSound();track('capture',{anomaly:scenes[candidate]?.name||'',mode:liteMode?'lite':'camera'});if($('special-test').checked||scenes[candidate]?.special||specialHold)startAnomaly();}
   else if(wasLocked&&!lockState.locked)stopAnomaly();
