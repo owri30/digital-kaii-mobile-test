@@ -385,6 +385,36 @@ window.KaiiReveal = {
     return weight?clamp(total/weight):0;
   }
   function createLock(random=Math.random){return {locked:false,hold:0,trace:0,required:6100+random()*7000};}
+  // Angular-equivalent scan effort, never a measurement in metres. Image flow
+  // supplements translation; max avoids counting the same turn twice.
+  function createScan(random=Math.random){
+    const level=Math.min(2,Math.floor(random()*3));
+    return {found:false,candidate:null,level,required:[120,180,240][level],travel:0,anchor:null,
+      checkpoints:[.2+random()*.2,.65+random()*.2],samples:[]};
+  }
+  function advanceScan(state,aim,imageTravel,dt){
+    if(!state.anchor){state.anchor={...aim};return 0;}
+    const angular=Math.hypot(wrap180(aim.yaw-state.anchor.yaw),aim.pitch-state.anchor.pitch);
+    let movement=0;
+    if(angular>=1.5){movement=angular;state.anchor={...aim};}
+    if(imageTravel>=1.5)movement=Math.max(movement,imageTravel);
+    const step=Math.min(movement,90*Math.min(250,Math.max(0,dt))/1000);
+    state.travel=Math.min(state.required,state.travel+step);
+    return step;
+  }
+  function sampleScan(state,visual){
+    if(!visual||state.samples.length>=2||state.travel/state.required<state.checkpoints[state.samples.length])return false;
+    // Only small numerical summaries survive this call; no frame or image URL.
+    state.samples.push({color:[...visual.color],light:[...visual.light],brightness:visual.brightness,warmth:visual.warmth,saturation:visual.saturation});
+    return true;
+  }
+  function scanVisual(state){
+    if(!state.samples.length)return null;
+    const mean={};
+    for(const key of ['color','light'])mean[key]=state.samples[0][key].map((_,i)=>state.samples.reduce((n,s)=>n+s[key][i],0)/state.samples.length);
+    for(const key of ['brightness','warmth','saturation'])mean[key]=state.samples.reduce((n,s)=>n+s[key],0)/state.samples.length;
+    return mean;
+  }
   // Equal weight per direction, but only recent samples within each direction.
   // Pausing or revisiting a direction must not preserve an old scene indefinitely.
   function scanScores(bins,bin,scores,now){
@@ -568,7 +598,7 @@ window.KaiiReveal = {
     for(const f of samples){f.color.forEach((v,i)=>color[i]+=v);f.light.forEach((v,i)=>light[i]+=v);}
     return {color:normalize(color),light:normalize(light),sound,quiet,width};
   }
-  const api={HUE_BINS,LIGHT_BINS,SOUND_BANDS,AIM,CONDITION_HOLD,overlap,profileFrom,graphScore,soundBands,profiles,imageFeatures,audioFeatures,score,createLock,scanScores,updateLock,candidateFor,imageChange,soundChange,imageMotion,wrap180,deviceAxes,bearing,elevation,createRadar,aimPosition,updateRadar,createConditions,updateConditions};
+  const api={HUE_BINS,LIGHT_BINS,SOUND_BANDS,AIM,CONDITION_HOLD,overlap,profileFrom,graphScore,soundBands,profiles,imageFeatures,audioFeatures,score,createLock,createScan,advanceScan,sampleScan,scanVisual,scanScores,updateLock,candidateFor,imageChange,soundChange,imageMotion,wrap180,deviceAxes,bearing,elevation,createRadar,aimPosition,updateRadar,createConditions,updateConditions};
   if(typeof module!=='undefined')module.exports=api;else root.KaiiSensing=api;
 })(typeof window!=='undefined'?window:globalThis);
 </script><script>'use strict';
@@ -617,7 +647,7 @@ let radarTrace=window.KaiiSensing.createRadar(),demoPoint=null;
 // 向きはセンサー、使えなければ映像の流れ、暗い時やカメラなしでは指でなぞった分（manual）。
 let manualAim={yaw:0,pitch:0},flowYaw=null,lastImageChange=1,darkView=false,aimed=false;
 let conditions=window.KaiiSensing.createConditions(),rush=null,specialHold=null,radarTouch=null;
-let shownTrace=null,lastTracePaint=performance.now(),lastAim=null,scan={found:false,bins:{},candidate:null};
+let shownTrace=null,lastTracePaint=performance.now(),lastAim=null,scan=window.KaiiSensing.createScan();
 // センサーを使う特別条件。怪異の本文と絵ができたら、scenes に condition を付けて登録する。
 // 登録された怪異の条件だけが働く（できていない怪異は出さず、画面でも触れない）。
 const SENSOR_CONDITIONS={northPillow:'北枕',kimon:'鬼門',hitori:'暗闇で動かす',flying:'真上で静止',kokkuri:'置いて中央に指',kagome:'振り向く'};
@@ -864,8 +894,8 @@ function paintHud(){
   const aim=currentAim(),f=n=>Math.round(n),sign=n=>(n>=0?'+':'')+f(n);
   const yaw=((aim.yaw%360)+360)%360;
   $('hud-bearing').textContent=sensors.absCamera!=null&&sensorsLive()?`方位 ${f(sensors.absCamera)}°　仰角 ${sign(aim.pitch)}°`:`向き ${f(yaw)}°　仰角 ${sign(aim.pitch)}°`;
-  const cov=Object.keys(scan.bins).length*10;
-  $('hud-scan').textContent=scan.found||lockState.locked?'走査 完了':`走査 ${Math.min(120,cov)}/120°`;
+  const progress=Math.floor(120*scan.travel/scan.required);
+  $('hud-scan').textContent=scan.found||lockState.locked?'走査 完了':`走査 ${progress}/120°`;
   const c=$('hud-color').getContext('2d'),w=$('hud-color').width,h=$('hud-color').height;
   c.clearRect(0,0,w,h);
   if(hudVisual?.color){let x=0;hudVisual.color.forEach((v,i)=>{const width=v*w;c.fillStyle=i<12?`hsl(${i*30+15},70%,55%)`:'#8a948e';c.fillRect(x,0,width,h);x+=width;});}
@@ -875,7 +905,7 @@ function paintHud(){
     hudAudio.sound.forEach((v,i)=>{const bh=Math.max(1,v/max*gain*ah);a.fillRect(i*bw,ah-bh,bw-1,bh);});}
 }
 function releaseMedia() { stopMotor(true);mediaRequest++;bootHide();if(mediaStream) mediaStream.getTracks().forEach(track=>track.stop());mediaStream=null;micSource?.disconnect();analyser?.disconnect();micSource=null;analyser=null;spectrum=null;sensingContext?.close().catch(()=>{});sensingContext=null;$('camera').srcObject=null;$('camera').hidden=true;$('media').textContent='カメラ・マイクを使う';clearReaction(); }
-function clearReaction(){stopAnomaly();strength=0;displayedStrength=0;exploring=false;aimed=false;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;demoPoint=null;radarTrace=window.KaiiSensing.createRadar();shownTrace=null;manualAim={yaw:0,pitch:0};flowYaw=null;lastImageChange=1;darkView=false;conditions=window.KaiiSensing.createConditions();rush=null;specialHold=null;lastAim=null;scan={found:false,bins:{},candidate:null};lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
+function clearReaction(){stopAnomaly();strength=0;displayedStrength=0;exploring=false;aimed=false;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;demoPoint=null;radarTrace=window.KaiiSensing.createRadar();shownTrace=null;manualAim={yaw:0,pitch:0};flowYaw=null;lastImageChange=1;darkView=false;conditions=window.KaiiSensing.createConditions();rush=null;specialHold=null;lastAim=null;scan=window.KaiiSensing.createScan();lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
 function paintReaction(){
   const locked=lockState.locked,radar=$('radar');
   const progress=locked?1:Math.min(1,lockState.trace/lockState.required);
@@ -935,7 +965,7 @@ function senseEnvironment(){
   if(phase!=='search')return;
   if(document.hidden){clearReaction();return;}
   const S=window.KaiiSensing;
-  let visual=null,audio=null;
+  let visual=null,audio=null,imageTravel=0;
   if(demoMode){
     ({visual,audio}=demoEnvironment(liteMode?LITE_ROUTINE[liteIndex%LITE_ROUTINE.length]:$('environment').value));
   }else{
@@ -949,6 +979,7 @@ function senseEnvironment(){
           // センサーが使えない時は、映像の流れからカメラの向きの変化を推し量る（縦長の映像なら横約50度・縦約65度）。
           const flow=darkView?{x:0,y:0}:S.imageMotion(previousPixels,pixels),portrait=video.videoHeight>video.videoWidth;
           const dyaw=-flow.x*(portrait?50:65)/64,dpitch=flow.y*(portrait?65:50)/48;
+          imageTravel=Math.hypot(dyaw,dpitch);
           flowYaw=darkView?null:(flowYaw??0)+dyaw;
           if(!sensorsLive()){manualAim.yaw+=dyaw;manualAim.pitch=Math.max(-80,Math.min(80,manualAim.pitch+dpitch));}
         }
@@ -980,20 +1011,24 @@ function senseEnvironment(){
   const keys=liteMode?[LITE_ROUTINE[liteIndex%LITE_ROUTINE.length]]:mode==='auto'?Object.keys(scenes):[mode];
   // 4時44分は時刻だけで成立する。確認用に手動指定した時は時刻を問わない。
   // センサーの特別条件の怪異は、色と音では出ない（条件の成立で startRush から捕捉する）。
-  const matchOf=key=>{const scene=scenes[key];return scene.condition==='time444'?(mode===key||isFourFortyFour(clock)?1:0):scene.condition?0:S.score(key,visual,audio)*hourFactor(scene,clock);};
-  // 見回し（2026-10-15ユーザー指定）：最初は点を出さない。左右を合わせて約120度見回すと、点がランダムな方向に現れる。
-  // 怪異の候補は、見回した向きごとの反応を平均して決め（じっと見ていた所だけが強くならない）、点が現れた時に固定する。
+  const matchOf=(key,scanImage)=>{const scene=scenes[key];return scene.condition==='time444'?(mode===key||isFourFortyFour(clock)?1:0):scene.condition?0:S.score(key,scanImage,audio)*hourFactor(scene,clock);};
+  // 通常の走査は三段階。前半・後半のランダムな位置で色分布を一回ずつ採り、均等に合成。
+  // カメラは動き・暗さ・特殊条件用に常時解析するが、通常候補用の景色はこの二回だけ。
   if(!scan.found&&!lockState.locked&&!rush&&!specialHold){
-    const bin=Math.floor((((aim.yaw%360)+360)%360)/10);
-    if(!scan.candidate)patternStrengths=S.scanScores(scan.bins,bin,Object.fromEntries(keys.map(key=>[key,matchOf(key)])),now);
-    else scan.bins[bin]={at:now};
-    const cells=Object.values(scan.bins);
-    exploring=moved>=1.5;
+    const step=S.advanceScan(scan,aim,imageTravel,dt);
+    exploring=step>0;
+    if(!scan.candidate){
+      if(step>0||scan.travel>=scan.required)S.sampleScan(scan,visual);
+      const scanImage=S.scanVisual(scan);
+      patternStrengths=Object.fromEntries(keys.map(key=>[key,matchOf(key,scanImage)]));
+    }
     strength=scan.candidate?patternStrengths[scan.candidate]:Math.max(0,...Object.values(patternStrengths));
-    if(cells.length*10>=120){
+    const cameraExpected=!demoMode&&mediaStream?.getVideoTracks().some(t=>t.readyState==='live');
+    const sampled=scan.candidate||scan.samples.length===2||(!cameraExpected&&!visual);
+    if(scan.travel>=scan.required&&sampled){
       const best=scan.candidate||S.candidateFor(patternStrengths,null,false);
       if(best){
-        scan.found=true;scan.candidate=best;candidate=best;strength=patternStrengths[best];
+        scan.found=true;scan.candidate=best;candidate=best;strength=patternStrengths[best];scan.samples=[];
         radarTrace.yaw=null;S.updateRadar(radarTrace,{active:false,locked:false,aim,dt:0});shownTrace=null;
       }
     }
@@ -1003,7 +1038,7 @@ function senseEnvironment(){
   // 点が逃げると、探索の進み具合が少し減る。大きく逃げた時は点が消え、また見回すと現れる（候補はそのまま）。
   if(fled&&!lockState.locked){
     lockState.trace=Math.max(0,lockState.trace-lockState.required*(fled===2?.2:.08));
-    if(fled===2&&!rush){scan.found=false;scan.bins={};exploring=false;aimed=false;paintReaction();return;}
+    if(fled===2&&!rush){scan={...S.createScan(),candidate:scan.candidate};exploring=false;aimed=false;paintReaction();return;}
   }
   const pos=S.aimPosition(radarTrace,aim);
   aimed=!pos.outside&&pos.distance<=S.AIM.center;
