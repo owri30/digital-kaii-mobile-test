@@ -19,7 +19,7 @@
 .signal{left:calc(50% + var(--trace-x,0%) - 4px);top:calc(50% + var(--trace-y,0%) - 4px);width:8px;height:8px;opacity:calc(.18 + var(--reaction)*.82);animation:none;box-shadow:0 0 calc(6px + var(--reaction)*24px) calc(var(--reaction)*10px) #a7d99c55;transition:left .12s linear,top .12s linear,opacity .2s}
 #search:not(.exploring):not(.locked) .signal{transition:none}
 #search.locked .signal{left:calc(50% - 4px);top:calc(50% - 4px);width:8px;height:8px}
-.sweep{opacity:calc(.2 + var(--reaction)*.8)}.demo-controls{padding-top:0}.demo-controls button{font-size:13px;padding:6px}.demo-controls label{font-size:13px}.demo-controls select{max-width:210px}#camera{opacity:.7}main:has(#camera:not([hidden])) .ambient{opacity:0}
+.sweep{opacity:calc(.45 + var(--reaction)*.55)}.demo-controls{padding-top:0}.demo-controls button{font-size:13px;padding:6px}.demo-controls label{font-size:13px}.demo-controls select{max-width:210px}#camera{opacity:.7}main:has(#camera:not([hidden])) .ambient{opacity:0}
 /* 捕捉した瞬間だけ、中心の反応・レーダー・測定ボタンを一緒に光らせる。 */
 #search.locked .signal{animation:lock-dot .48s ease-out;transform-origin:center;z-index:2;background:#efffde}
 #search.locked .radar{animation:lock-radar .48s ease-out}
@@ -27,7 +27,7 @@
 @keyframes lock-dot{0%{transform:scale(1);box-shadow:0 0 12px 4px #c8ffbd80}20%{transform:scale(2.6);background:#fffef1;box-shadow:0 0 18px 8px #d9ffcae0,0 0 40px 16px #b2f5ac70}100%{transform:scale(1);box-shadow:0 0 24px 10px #a7d99c55}}
 @keyframes lock-radar{0%{border-color:#f0ffdb;box-shadow:0 0 10px #cfffbd70,inset 0 0 10px #cfffbd40}20%{border-color:#f6ffe8;box-shadow:0 0 46px #cfffbd90,inset 0 0 38px #cfffbd60}100%{border-color:#b1d3b4;box-shadow:0 0 28px #75be8f38,inset 0 0 0 #cfffbd00}}
 @keyframes lock-button{0%{background:#1b3427;box-shadow:0 0 10px #cfffbd60}20%{background:#d3f5bd;color:#102016;border-color:#f4ffe8;box-shadow:0 0 32px 6px #c4f5ac80}100%{background:#13221e;color:#efffe4;box-shadow:0 0 15px #a9df9e28}}
-#search:not(.exploring) .sweep{animation-play-state:paused}#radar{touch-action:none}
+/* 止まっていてもソナーのように回り続ける（2026-10-17ユーザー指定）。速さを切り替えると線の位置が飛ぶので、常に同じ速さ。 */#radar{touch-action:none}
 
 .description-control{padding:20px 24px 0}.description-control>button{width:100%}#description-panel{margin-top:18px;padding:20px;background:#0b1815;border:1px solid var(--line)}#description-panel h3{margin:0 0 14px;font-size:18px;font-weight:400;letter-spacing:.12em}#description-panel p{margin:0;font-size:15px;line-height:2;color:#c4d4c8;overflow-wrap:anywhere}
 
@@ -392,13 +392,22 @@ window.KaiiReveal = {
     return {found:false,candidate:null,level,required:[120,180,240][level],travel:0,anchor:null,
       checkpoints:[.2+random()*.2,.65+random()*.2],samples:[]};
   }
-  function advanceScan(state,aim,imageTravel,dt){
-    if(!state.anchor){state.anchor={...aim};return 0;}
+  // aim：センサーと指でなぞった分の向き（映像の流れで動かした分は含めない）。
+  // flow：その回の映像の流れ（度。センサーが使える時は、センサーが感じた回転を差し引いた残り）。
+  // 映像の流れは、足し合わせた位置を約0.3秒でならし、正味で3度以上動いた分だけ数える。
+  // 行ったり来たりの手ぶれや、照準の向きとの二重の数え方を防ぐ（2026-10-17）。
+  function advanceScan(state,aim,flow,dt){
+    const ms=Math.min(250,Math.max(0,dt));
+    if(!state.anchor){state.anchor={...aim};state.flow={x:0,y:0,sx:0,sy:0,ax:0,ay:0};return 0;}
     const angular=Math.hypot(wrap180(aim.yaw-state.anchor.yaw),aim.pitch-state.anchor.pitch);
     let movement=0;
     if(angular>=1.5){movement=angular;state.anchor={...aim};}
-    if(imageTravel>=1.5)movement=Math.max(movement,imageTravel);
-    const step=Math.min(movement,90*Math.min(250,Math.max(0,dt))/1000);
+    const f=state.flow||(state.flow={x:0,y:0,sx:0,sy:0,ax:0,ay:0}),d=typeof flow==='number'?{x:flow,y:0}:(flow||{x:0,y:0});
+    f.x+=d.x||0;f.y+=d.y||0;
+    const k=1-Math.exp(-ms/300);f.sx+=(f.x-f.sx)*k;f.sy+=(f.y-f.sy)*k;
+    const net=Math.hypot(f.sx-f.ax,f.sy-f.ay);
+    if(net>=3){movement=Math.max(movement,net);f.ax=f.sx;f.ay=f.sy;}
+    const step=Math.min(movement,90*ms/1000);
     state.travel=Math.min(state.required,state.travel+step);
     return step;
   }
@@ -618,7 +627,7 @@ const scenes = {
   merry: {"key":"merry","name":"メリーさんの電話","asset":"i/70063b0720f5.jpg","type":"ハッセイ","count":5,"dates":["1963-09-24T21:14:05","1978-06-13T22:41:39","1991-12-02T23:06:18","2009-03-27T22:18:44","2044-10-05T21:52:31"],"hours":[20,2],"alt":"夜の家の廊下。受話器の外れた古い電話の手前に、金髪の古い人形が背を向けて座っている。","description":"引っ越しの日、少女は古くなった外国製の人形「メリー」を捨てていった。その夜、電話が鳴る。「あたしメリーさん。今、ゴミ捨て場にいるの」。切っても、すぐにまたかかってくる。「今、タバコ屋さんの角にいるの」「今、あなたの家の前にいるの」。告げられる場所は、電話のたびに近づいてくる。意を決して玄関を開けても、そこには誰もいない。ほっとした瞬間、また電話が鳴る。「あたしメリーさん。今、あなたの後ろにいるの」。話はそこで終わり、その後どうなったのかは語られない。振り向いたら殺される、刃物で刺されるなど、結末を足した話もある。マンションの階を一つずつ上がってくる話、チェーンメールで回ってくる話など、電話の形が変わるたびに姿を変えて語り継がれてきた。"},
   doppel: {"key":"doppel","name":"ドッペルゲンガー","asset":"i/27aba7df31ec.jpg","type":"モクゲキ","count":5,"dates":["1891-05-12T15:27:40","1936-10-21T11:48:03","1969-04-30T16:12:57","2012-09-18T13:35:22","2058-02-07T17:04:49"],"hours":[9,18],"alt":"曇りの日の交差点。流れる人混みの中で、同じ服装の同じ顔の二人が向かい合って立ち止まっている。","description":"ドイツ語で「二重に歩く者」。自分とまったく同じ姿をした者を見る現象で、古くから、肉体から抜け出した魂が形をとったものと考えられてきた。もう一人の自分は誰とも口をきかず、本人にゆかりのある場所に現れ、ふっと消える。そして、自分のドッペルゲンガーを見た者は、ほどなく死ぬといわれる。アメリカ大統領リンカーンやロシアの女帝エカテリーナ2世にも、自分の姿を見たという話が残る。芥川龍之介は、自分の「もう一人」が帝劇と銀座に現れたと語ったとされる。19世紀のフランスでは、ある女性の分身が四十人以上に目撃されたという話が残る。医学では「自己像幻視」と呼ばれ、脳の側頭葉と頭頂葉の境目の働きとの関わりが指摘されている。だが、他人にまで見える分身を、それだけで説明することはできない。"},
   tsuchinoko: {"key":"tsuchinoko","name":"ツチノコ","asset":"i/4e2a17b497d4.jpg","type":"モクゲキ","count":4,"dates":["1694-07-19T10:22:11","1958-08-03T13:47:26","1987-06-24T11:09:52","2033-07-11T14:31:08"],"hours":[9,17],"alt":"夏の山道の草むら。胴の太く膨らんだ短い蛇のような生き物が、こちらを見ている。","description":"胴の真ん中がビール瓶のように太く膨らんだ、短い蛇。普通の蛇と違ってまぶたがあり、「チー」と鳴くという。尺取虫のように体を曲げ伸ばしして進み、ときには尾をくわえて輪になり、坂を転がり落ちてくる。二メートルほども跳ぶという話もある。奈良時代の『古事記』『日本書紀』に現れる野の神「野槌（のづち）」や、江戸時代の百科事典『和漢三才図会』の「野槌蛇」が、その原型とされる。1970年代、新聞の連載小説や漫画をきっかけに全国的なブームとなり、各地の自治体が生け捕りに懸賞金をかけた。岐阜県や兵庫県をはじめ目撃談は各地にあるが、捕まった例は一度もない。腹の膨れたマムシやヤマカガシ、トカゲの見間違いとする説もある。"},
-  nessie: {"key":"nessie","name":"ネッシー","asset":"i/e7eed74c265a.jpg","type":"モクゲキ","count":4,"dates":["1871-09-02T07:18:45","1952-05-26T08:44:10","1977-10-14T16:52:33","2047-04-09T09:06:21"],"hours":[5,12],"alt":"霧の立ちこめる暗い湖。水面から長い首と低い背中がのぞいている。","description":"スコットランドの北部、細長く深いネス湖にすむとされる巨大な生き物。湖には周りの土地から泥炭が流れ込み、水は紅茶のように暗く、数メートル先も見通せない。最古の話は6世紀、聖コルンバがネス川で怪物を退けたという伝記の一節だが、正確な記録とはみなされていない。湖岸に道路が通された1930年代から目撃が急増し、長い首を水面から突き出した写真は世界中に広まった。首長竜の生き残りだという説が最も有名だが、その写真は後に、関係者によって作り物だったと告白されている。音波による探査でも大きな生き物は見つからず、多くの写真は船の航跡や水鳥、流木の見間違いとされる。それでも、湖の暗い水の底に何かがいるという話は、今も消えていない。"},
+  nessie: {"key":"nessie","name":"ネッシー","asset":"i/e7eed74c265a.jpg","type":"モクゲキ","count":5,"dates":["BC183522907-08-11T07:42:19","BC84317604-05-02T08:15:33","BC12846-10-19T06:58:04","41733-04-27T07:21:50","286105-09-08T09:39:12"],"hours":[5,12],"alt":"霧の立ちこめる暗い湖。水面から長い首と低い背中がのぞいている。","description":"スコットランドの北部、細長く深いネス湖にすむとされる巨大な生き物。湖には周りの土地から泥炭が流れ込み、水は紅茶のように暗く、数メートル先も見通せない。最古の話は6世紀、聖コルンバがネス川で怪物を退けたという伝記の一節だが、正確な記録とはみなされていない。湖岸に道路が通された1930年代から目撃が急増し、長い首を水面から突き出した写真は世界中に広まった。首長竜の生き残りだという説が最も有名だが、その写真は後に、関係者によって作り物だったと告白されている。音波による探査でも大きな生き物は見つからず、多くの写真は船の航跡や水鳥、流木の見間違いとされる。それでも、湖の暗い水の底に何かがいるという話は、今も消えていない。"},
   grey: {"key":"grey","name":"グレイ型宇宙人","asset":"i/4fe5e164abde.jpg","type":"モクゲキ","count":4,"dates":["1958-03-18T02:13:40","1974-08-27T23:46:19","1996-01-30T01:28:05","2051-11-12T03:39:57"],"hours":[22,5],"alt":"夜の田んぼの間の道。上からの白い光の中に、大きな頭と黒い目の小さな灰色の人影が立っている。","description":"子どもほどの背丈に、不釣り合いなほど大きな頭。灰色の肌に、白目のない大きな黒い目。小さな鼻の穴と、切れ目のような口。今では「宇宙人」と聞いて多くの人が思い浮かべる姿だが、1970年代まではタコのような火星人の姿のほうが一般的だった。始まりとされるのは1961年、アメリカの夫婦が夜道で光る物体に追われ、約2時間半の記憶を失ったという事件だ。後の催眠で、夫婦は灰色の者たちに体を調べられたと語った。ただし、その少し前に似た姿の宇宙人がテレビドラマに登場していたことなどから、証言の信頼性は疑問視されている。その後、宇宙人に連れ去られたという話がテレビ番組を通じて次々と紹介され、この姿は世界中に定着した。連れ去られた者の時間は、いつも途切れている。"},
   tengu: {"key":"tengu","name":"天狗","asset":"i/1025aa572841.jpg","type":"モクゲキ","count":5,"dates":["1542-10-06T16:20:33","1789-08-29T22:47:11","1903-07-14T15:58:02","1964-09-08T17:11:46","2029-05-23T18:36:24"],"hours":[14,22],"alt":"杉の森。太い枝の上に、赤い顔で鼻の長い山伏姿の者が羽団扇を持って立ち、こちらを見下ろしている。","description":"「天狗」はもともと中国で、轟音とともに夜空を流れる凶事の星を指す言葉だった。『日本書紀』には637年、都の空を大きな星が音を立てて流れ、唐から帰った僧が「あれは流れ星ではなく天狗だ」と告げたと記されている。平安時代には鳶のような姿で語られ、長く突き出た鼻の姿は鎌倉時代以降の絵巻から現れる。赤い顔に山伏の装束、羽団扇に一本歯の高下駄という今の姿が定まったのは、近世になってからのことだ。山の神として祀られる一方、山の怪異の多くは天狗の仕業とされた。誰もいない山中で大木の倒れる音がする「天狗倒し」、どこからか響く「天狗笑い」、突風とともに石が降る「天狗礫」。山で人が消えれば、天狗にさらわれたのだといわれた。鞍馬山の僧正坊をはじめ、名のある天狗は各地の霊山に住むという。"},
   gashadokuro: {"key":"gashadokuro","name":"がしゃどくろ","asset":"i/b767a51174f4.jpg","type":"モクゲキ","count":4,"dates":["1471-11-26T01:33:12","1857-12-09T02:41:57","1983-02-15T00:52:08","2061-12-01T02:17:44"],"hours":[23,4],"alt":"月夜の荒れ野。尾根の向こうから、見上げるほど巨大な骸骨が身を乗り出している。","description":"戦や飢えで野垂れ死にし、弔われることのなかった者たちの骨と怨みが寄り集まって生まれる、見上げるほど巨大な骸骨。夜更けに「がしゃがしゃ」と骨を鳴らしながら荒れ野をさまよい、生きた人間を見つけると、つかみ上げて握りつぶし、食らうという。古くから伝わる妖怪のように思われがちだが、初めて書物に現れたのは1966年、少女向け雑誌の特集記事で、昭和に生まれた新しい妖怪だ。巨大な髑髏の姿として知られる歌川国芳の浮世絵「相馬の古内裏」は、実はがしゃどくろを描いたものではない。物語の原作では等身大の骸骨が何体も現れる場面を、国芳が一体の巨大な骸骨に描き変えたものだ。その迫力ある姿が、後の妖怪図鑑で、がしゃどくろの姿として使われるようになった。"},
@@ -628,7 +637,7 @@ const scenes = {
   kitsune: {"key":"kitsune","name":"狐の嫁入り（天気雨）","asset":"i/9dde6c705029.jpg","type":"モクゲキ","count":5,"dates":["1748-06-14T15:22:08","1882-09-05T10:41:33","1931-07-18T13:56:12","1998-05-30T16:08:47","2040-08-21T12:34:19"],"hours":[9,17],"alt":"日が差しているのに雨の降る田んぼ。山すその道を、傘と提灯を持った行列がぼんやりと進んでいく。","description":"空は晴れて日が差しているのに、細かな雨が降る。日本の各地で、この天気雨を「狐の嫁入り」と呼ぶ。晴れの中の雨という不思議さを、狐に化かされたように感じたからだとも、山の上を行く嫁入り行列を人の目から隠すために、狐が雨を降らせるのだともいわれる。もとは、夜の山野に怪しい火が提灯の行列のように連なって見える現象を指す言葉でもあった。江戸時代の越後の記録には、その火が一里あまりも続いたと書かれている。近づくと見えなくなる火の列は、狐の婚礼の灯りだと考えられた。火の多い年は豊作になるといわれた土地もあれば、嫁入りではなく狐の葬列であり、死者が出る前触れだと恐れた土地もある。晴れた空から雨が落ちてきたら、山の縁に目を凝らしてみるといい。何かが、列をなして通り過ぎていくかもしれない。"},
   kyotou: {"key":"kyotou","name":"巨頭オ","asset":"i/0c9c78c5b11b.jpg","type":"モクゲキ","count":4,"dates":["1971-05-04T15:26:41","1988-08-14T17:02:19","2013-09-22T16:44:08","2048-05-03T14:37:55"],"hours":[13,19],"alt":"夕日の差す山あいの廃村。草むらから、体に不釣り合いなほど頭の大きな者たちが現れ、こちらへ近づいてくる。","description":"山あいの小さな村に、昔、もてなしのいい小さな旅館があった。何年かたった連休に、懐かしくなって車で訪ねてみると、村へ向かう道の看板には、ただ「巨頭オ」とだけ書かれていた。たどり着いた村はとうに人が住まなくなり、草に埋もれていた。車を停めかけたとき、草むらから、人の体に不釣り合いなほど大きな頭をした者たちが次々に現れた。大きな頭を左右に振りながら、こちらへ近づいてくる。慌てて車をバックさせて逃げ帰り、地図で確かめると、そこは確かに、かつて泊まったあの村だった。2006年にネット掲示板の怪談のスレッドへ書き込まれた体験談で、看板はもともと「巨頭村」と書かれていた文字が削れたのではないかともいわれる。村がどこにあるのか、なぜそうなったのかは、誰にもわからない。"},
   skyfish: {"key":"skyfish","name":"スカイフィッシュ","asset":"i/5fa7f0c2efad.jpg","type":"モクゲキ","count":4,"dates":["1926-07-03T12:44:18","1963-05-15T10:17:36","1999-08-27T14:52:03","2037-06-10T09:31:47"],"hours":[8,16],"alt":"真昼の青空と屋根と電線。空を、棒のような細長い影がいくつも高速で横切っている。","description":"真昼の空を、目にも留まらぬ速さで横切っていく棒のような生き物。体の両脇に帯のようなひれがあり、それを波打たせて時速280キロ以上で飛ぶという。1995年、ある映像編集者が仕事中に撮影した映像をコマ送りしていて、画面を横切る奇妙な影に気づいたのが始まりとされる。その後、世界中の映像から同じような影が見つかり、太古の海の生き物の生き残りではないかという説まで唱えられた。だが、肉眼で見た人はいない。捕まえた人もいない。いまでは、ハエなどの虫がカメラの前を横切ったとき、シャッターが開いている間の動きが一本の線のように写ったもの、と考えられている。見えないはずのものが、カメラにだけ映る。それがこの生き物の正体なのかもしれない。"},
-  bigfoot: {"key":"bigfoot","name":"ビッグフット","asset":"i/f952cdf5c5cf.jpg","type":"モクゲキ","count":4,"dates":["1846-10-02T17:33:10","1924-09-14T18:12:47","1981-11-06T16:48:22","2027-08-29T19:05:38"],"hours":[15,21],"alt":"夕方の深い針葉樹の森。木々の間を、毛に覆われた大きな二足の影が歩き去りながら振り返っている。","description":"北アメリカの太平洋岸北西部、深い針葉樹の森にすむとされる、二本足で歩く大きな獣人。背丈は2〜3メートル、全身が褐色か灰色の毛に覆われ、顔だけに毛がない。通ったあとには強い臭いが残り、地面には人間のものよりはるかに大きな、長さ50センチ近い足跡が残るという。1958年、カリフォルニアの森で作業員が巨大な足跡を見つけ、その石膏の型が新聞に載ると、目撃の報告が一気に増えた。1967年には、森を歩き去りながら振り返る毛むくじゃらの姿をとらえたとされるフィルムが撮られる。着ぐるみだったという告白の話もあるが、今も論争は続いている。一方で、この土地の先住民は昔から毛深い巨人の話を語り継ぎ、サスクワッチと呼んで、今も聖なる存在としている。"},
+  bigfoot: {"key":"bigfoot","name":"ビッグフット","asset":"i/f952cdf5c5cf.jpg","type":"モクゲキ","count":5,"dates":["BC1204377-10-02T17:33:10","BC318650-09-14T18:12:47","BC47212-11-06T16:48:22","19844-08-29T19:05:38","731260-10-21T17:56:03"],"hours":[15,21],"alt":"夕方の深い針葉樹の森。木々の間を、毛に覆われた大きな二足の影が歩き去りながら振り返っている。","description":"北アメリカの太平洋岸北西部、深い針葉樹の森にすむとされる、二本足で歩く大きな獣人。背丈は2〜3メートル、全身が褐色か灰色の毛に覆われ、顔だけに毛がない。通ったあとには強い臭いが残り、地面には人間のものよりはるかに大きな、長さ50センチ近い足跡が残るという。1958年、カリフォルニアの森で作業員が巨大な足跡を見つけ、その石膏の型が新聞に載ると、目撃の報告が一気に増えた。1967年には、森を歩き去りながら振り返る毛むくじゃらの姿をとらえたとされるフィルムが撮られる。着ぐるみだったという告白の話もあるが、今も論争は続いている。一方で、この土地の先住民は昔から毛深い巨人の話を語り継ぎ、サスクワッチと呼んで、今も聖なる存在としている。"},
   kesaran: {"key":"kesaran","name":"ケサランパサラン","asset":"i/3e0f47100471.jpg","type":"モクゲキ","count":5,"dates":["1803-04-11T14:02:26","1956-06-30T11:47:15","1983-10-22T15:36:54","2009-05-08T13:19:40","2045-09-16T16:58:07"],"hours":[10,18],"alt":"嵐の前の黄色い光が差す和室。桐の箱のそばで、白い毛玉がいくつも宙に浮かんでいる。","description":"ふわふわと宙を漂う、白い小さな毛玉。タンポポの綿毛のようでもあり、ウサギの尻尾のようでもある。見つけた人には幸せが訪れるといわれ、東北地方などで伝えられてきた。嵐の前に、雷とともに空から降ってくるともいう。穴を開けた桐の箱に入れ、おしろいを与えると、いつのまにか増える。ただし、持っていることは人に知らせないほうがよく、代々ひそかに受け継いできた家もあるという。1年に2回以上見ると、その力は消えてしまうともいわれる。1970年代の後半に広く知られるようになったが、その多くは植物の綿毛だったらしい。動物の毛が丸まったもの、虫、鉱物など、正体については今も説が分かれていて、そのどれもがケサランパサランと呼ばれてきたのかもしれない。"},
   kudan: {"key":"kudan","name":"件（くだん）","asset":"i/d4e522a43544.jpg","type":"モクゲキ","count":4,"dates":["1702-03-19T05:41:08","1852-02-13T06:27:55","1921-04-04T04:58:12","2063-01-28T05:14:39"],"hours":[4,9],"alt":"夜明けの古い牛小屋。わらの上に横たわる子牛の顔だけが、穏やかな人の顔をしている。","description":"牛から生まれる、人の顔をした子牛。「件」という字のとおり、人と牛とが一つになった姿をしている。生まれるとすぐに人の言葉で予言をし、数日のうちに死んでしまうという。告げられるのは、豊作、疫病の流行、戦、日照りといった、これから起こることだ。件の予言は決して外れないとされ、証文の終わりに書く「よって件の如し」という言葉はそこから来た、という説明まで生まれた。ただし、これは後から付けられた話だと考えられている。江戸時代の後期には、件が現れて予言をしたという話が瓦版に刷られて広まり、その絵を家に貼っておけば災いを逃れられるともいわれた。未来を告げるためだけに生まれ、告げ終えると去っていく。件は、時を越えて届く知らせそのものなのかもしれない。"},
   ubume: {"key":"ubume","name":"姑獲鳥（うぶめ）","asset":"i/134012d2665c.jpg","type":"モクゲキ","count":4,"dates":["1587-05-23T23:44:02","1734-09-10T00:18:37","1912-06-26T22:51:49","1975-11-19T01:07:13"],"hours":[21,3],"alt":"雨の夜、提灯の灯る橋のたもと。白い着物の女が、布にくるんだ赤子をこちらへ差し出している。","description":"雨の夜、川にかかる橋のたもとや、人通りの絶えた辻に、赤子を抱いた女が立っている。お産で命を落とした女性の霊が、この世に留まった姿だという。通りかかった者に「この子を抱いてやってください」と頼み、引き受けて抱くと、赤子はだんだん重くなっていく。重さに耐えて抱き通した者は、怪力や富を授かったという話が残る。だが怖がって逃げれば祟られ、高い熱にうなされるともいわれる。抱いていたはずの赤子が、気づけば石や地蔵に変わっていたという話もある。江戸時代の妖怪画では、腰から下が赤く染まった女の姿で描かれた。中国には「姑獲鳥」という鳥の妖怪の伝承があり、江戸時代のはじめにこれと同じものと考えられ、「姑獲鳥」と書いて「うぶめ」と読むようになった。"},
@@ -645,7 +654,8 @@ let exploring=false,previousPixels=null,previousAudio=null,lastVisualSample=0,la
 let radarTrace=window.KaiiSensing.createRadar(),demoPoint=null;
 // 照準型レーダー（2026-10-15）：中央＝カメラの向き。点を中央に合わせている間だけ探索が進む。
 // 向きはセンサー、使えなければ映像の流れ、暗い時やカメラなしでは指でなぞった分（manual）。
-let manualAim={yaw:0,pitch:0},flowYaw=null,lastImageChange=1,darkView=false,aimed=false;
+// flowAim：映像の流れで照準に足した分。走査量では、照準の向きとは別に正味の流れとして数える（手ぶれ対策）。
+let manualAim={yaw:0,pitch:0},flowAim={yaw:0,pitch:0},lastSensorAim=null,flowYaw=null,lastImageChange=1,darkView=false,aimed=false;
 let conditions=window.KaiiSensing.createConditions(),rush=null,specialHold=null,radarTouch=null;
 let shownTrace=null,lastTracePaint=performance.now(),lastAim=null,scan=window.KaiiSensing.createScan();
 // センサーを使う特別条件。怪異の本文と絵ができたら、scenes に condition を付けて登録する。
@@ -760,7 +770,10 @@ function sensorNoteNeeded(){
   return sensors.state==='denied'||(sensors.state==='unavailable'&&navigator.maxTouchPoints>0);
 }
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const format = value => value.replace('T',' ').replaceAll('-','.');
+// 日時は「年-月-日T時:分:秒」。年は紀元前（BC）や4桁を超える年もある（太古・はるかな未来。2026-10-17）。
+// 4桁を超える年だけ3桁ごとにカンマを入れる（BC0046・2041 などは今までどおり）。
+function splitDate(date){const m=/^(BC)?(\d+)(-.*)$/.exec(date);return m?{bc:!!m[1],digits:m[2],year:Number(m[2]),rest:m[3]}:{bc:false,digits:'',year:0,rest:date};}
+const format = value => {const {bc,digits,rest}=splitDate(value);return (bc?'BC':'')+(digits.length>4?Number(digits).toLocaleString('en-US'):digits)+rest.replace('T',' ').replaceAll('-','.');};
 const sleep = ms => new Promise(resolve => setTimeout(resolve,ms));
 function refreshCampaign() { const label=window.KaiiCampaign.getLabel(),url=window.KaiiCampaign.getUrl(); $('campaign-note').textContent=label; $('campaign-note').hidden=!label; $('campaign-link').hidden=!url; if(url)$('campaign-link').href=url; }
 function setPhase(value) { phase = value; $('instrument').dataset.phase = value; syncMotor(); }
@@ -814,8 +827,8 @@ function createRows(scene) {
   const dates = scene.dates || [...(scene.rifts||[]),...Array.from({length:120-(scene.rifts||[]).length},(_,i)=>`2068-08-21T03:17:${String(20+Math.floor(i/6)).padStart(2,'0')}`)];
   return shuffle(dates.map((date,id)=>({id,date,type:scene.type}))).map((row,index)=>({...row,arrival:index}));
 }
-// 紀元前（BC0046-…）を西暦より前に並べるための比較用の文字列。
-function dateKey(date) { return date.startsWith('BC') ? '!'+String(9999-Number(date.slice(2,6))).padStart(4,'0')+date.slice(6) : date; }
+// 時系列に並べるための比較用の文字列。年を数として扱い（紀元前は負）、桁をそろえる。
+function dateKey(date) { const {bc,year,rest}=splitDate(date); return String((bc?-year:year)+1e9).padStart(10,'0')+rest; }
 function line(row) { return `${format(row.date)} ${row.type}`; }
 // 起動シーケンス（2026-10-15ユーザー指定）：カメラとマイクを起動する時のロード画面。
 // 全部読ませる必要はないので、一瞬で終わる行と長くかかる行を混ぜる。許可が出てから約2秒で測定に移る。
@@ -905,7 +918,7 @@ function paintHud(){
     hudAudio.sound.forEach((v,i)=>{const bh=Math.max(1,v/max*gain*ah);a.fillRect(i*bw,ah-bh,bw-1,bh);});}
 }
 function releaseMedia() { stopMotor(true);mediaRequest++;bootHide();if(mediaStream) mediaStream.getTracks().forEach(track=>track.stop());mediaStream=null;micSource?.disconnect();analyser?.disconnect();micSource=null;analyser=null;spectrum=null;sensingContext?.close().catch(()=>{});sensingContext=null;$('camera').srcObject=null;$('camera').hidden=true;$('media').textContent='カメラ・マイクを使う';clearReaction(); }
-function clearReaction(){stopAnomaly();strength=0;displayedStrength=0;exploring=false;aimed=false;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;demoPoint=null;radarTrace=window.KaiiSensing.createRadar();shownTrace=null;manualAim={yaw:0,pitch:0};flowYaw=null;lastImageChange=1;darkView=false;conditions=window.KaiiSensing.createConditions();rush=null;specialHold=null;lastAim=null;scan=window.KaiiSensing.createScan();lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
+function clearReaction(){stopAnomaly();strength=0;displayedStrength=0;exploring=false;aimed=false;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;demoPoint=null;flowAim={yaw:0,pitch:0};lastSensorAim=null;radarTrace=window.KaiiSensing.createRadar();shownTrace=null;manualAim={yaw:0,pitch:0};flowYaw=null;lastImageChange=1;darkView=false;conditions=window.KaiiSensing.createConditions();rush=null;specialHold=null;lastAim=null;scan=window.KaiiSensing.createScan();lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
 function paintReaction(){
   const locked=lockState.locked,radar=$('radar');
   const progress=locked?1:Math.min(1,lockState.trace/lockState.required);
@@ -965,7 +978,7 @@ function senseEnvironment(){
   if(phase!=='search')return;
   if(document.hidden){clearReaction();return;}
   const S=window.KaiiSensing;
-  let visual=null,audio=null,imageTravel=0;
+  let visual=null,audio=null,imageFlow={x:0,y:0};
   if(demoMode){
     ({visual,audio}=demoEnvironment(liteMode?LITE_ROUTINE[liteIndex%LITE_ROUTINE.length]:$('environment').value));
   }else{
@@ -979,9 +992,9 @@ function senseEnvironment(){
           // センサーが使えない時は、映像の流れからカメラの向きの変化を推し量る（縦長の映像なら横約50度・縦約65度）。
           const flow=darkView?{x:0,y:0}:S.imageMotion(previousPixels,pixels),portrait=video.videoHeight>video.videoWidth;
           const dyaw=-flow.x*(portrait?50:65)/64,dpitch=flow.y*(portrait?65:50)/48;
-          imageTravel=Math.hypot(dyaw,dpitch);
+          imageFlow={x:dyaw,y:dpitch};
           flowYaw=darkView?null:(flowYaw??0)+dyaw;
-          if(!sensorsLive()){manualAim.yaw+=dyaw;manualAim.pitch=Math.max(-80,Math.min(80,manualAim.pitch+dpitch));}
+          if(!sensorsLive()){const before=manualAim.pitch;manualAim.yaw+=dyaw;manualAim.pitch=Math.max(-80,Math.min(80,manualAim.pitch+dpitch));flowAim.yaw+=dyaw;flowAim.pitch+=manualAim.pitch-before;}
         }
         previousPixels=pixels;lastVisualSample=now;
       }catch{}
@@ -1006,6 +1019,9 @@ function senseEnvironment(){
     if(met)startRush(met);
   }
   const aim=currentAim();
+  // その回にセンサーが感じた回転（映像の流れから差し引く）。点を追っている間も更新して、走査に戻った時に古い値を使わない。
+  const sensorAim=sensorsLive()?{yaw:sensors.yaw,pitch:sensors.pitch}:null;
+  const turned=sensorAim&&lastSensorAim?{x:S.wrap180(sensorAim.yaw-lastSensorAim.yaw),y:sensorAim.pitch-lastSensorAim.pitch}:{x:0,y:0};lastSensorAim=sensorAim;
   const moved=lastAim?Math.hypot(S.wrap180(aim.yaw-lastAim.yaw),aim.pitch-lastAim.pitch):0;lastAim=aim;
   const mode=$('specimen').value,clock=new Date();
   const keys=liteMode?[LITE_ROUTINE[liteIndex%LITE_ROUTINE.length]]:mode==='auto'?Object.keys(scenes):[mode];
@@ -1015,7 +1031,8 @@ function senseEnvironment(){
   // 通常の走査は三段階。前半・後半のランダムな位置で色分布を一回ずつ採り、均等に合成。
   // カメラは動き・暗さ・特殊条件用に常時解析するが、通常候補用の景色はこの二回だけ。
   if(!scan.found&&!lockState.locked&&!rush&&!specialHold){
-    const step=S.advanceScan(scan,aim,imageTravel,dt);
+    // 走査量の向きは、センサーと指でなぞった分だけ。映像の流れは別に渡し、センサーが使える時はセンサーの回転を差し引く。
+    const step=S.advanceScan(scan,{yaw:aim.yaw-flowAim.yaw,pitch:aim.pitch-flowAim.pitch},{x:imageFlow.x-turned.x,y:imageFlow.y-turned.y},dt);
     exploring=step>0;
     if(!scan.candidate){
       if(step>0||scan.travel>=scan.required)S.sampleScan(scan,visual);
