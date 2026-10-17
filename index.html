@@ -107,6 +107,7 @@ html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:
 .hud-panel{top:12px;left:16px;right:118px;gap:2px}
 .hud-row{display:flex;align-items:flex-end;gap:10px;white-space:nowrap}
 .hud-panel canvas{width:96px}
+.inapp-note{color:#c9d8c4}.inapp-open{display:block;margin:8px auto 0;padding:8px 18px;font-size:13px;letter-spacing:.08em}
 </style>
 </head>
 <body>
@@ -121,7 +122,7 @@ html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:
     <div class="brand"><span>時相観測装置</span><h1>デジタル怪異測定器</h1></div>
     <section id="search" aria-label="サーチ">
       <div class="radar" id="radar"><div class="radar-grid"></div><div class="sweep"></div><div class="signal"></div><span class="aim-ring" aria-hidden="true"></span><span class="crosshair"></span><span class="radar-label">SCANNING</span></div>
-      <p id="signal-label">探知中</p><p id="debug-numbers" class="debug-numbers" hidden></p><button id="start-media" class="start-media">カメラとマイクで探す</button><p id="start-note" class="start-note">映像・音声・端末の動きは端末の中だけで使い、保存・送信しません</p><p id="sensor-note" class="start-note sensor-note" hidden>動きのセンサーが使えないため、一部の痕跡は探知できません</p><button id="start-lite" type="button" class="start-lite">カメラを使わずに観測する</button><button id="measure" disabled>測定開始</button>
+      <p id="signal-label">探知中</p><p id="debug-numbers" class="debug-numbers" hidden></p><button id="start-media" class="start-media">カメラとマイクで探す</button><p id="start-note" class="start-note">映像・音声・端末の動きは端末の中だけで使い、保存・送信しません</p><p id="inapp-note" class="start-note inapp-note" hidden>アプリの中のブラウザでは、カメラやマイクが使えないことがあります。うまく動かない時は、SafariやChromeで開いてください。<button id="inapp-open" type="button" class="inapp-open" hidden>ブラウザで開く</button></p><p id="sensor-note" class="start-note sensor-note" hidden>動きのセンサーが使えないため、一部の痕跡は探知できません</p><button id="start-lite" type="button" class="start-lite">カメラを使わずに観測する</button><button id="measure" disabled>測定開始</button>
     </section>
     <section id="reading" hidden aria-label="観測中">
       <div class="reading-title">時相照合</div><div id="digits" aria-hidden="true">0000.00.00<br>00:00:00</div><div id="records" aria-label="確定した観測記録"></div><div id="phase-label" role="status">測定中</div>
@@ -717,6 +718,10 @@ const track=(()=>{
 })();
 // 本番版（data-release="1"）では確認用の操作を使わない。
 const RELEASE=document.documentElement.dataset.release==='1';
+// カメラ・マイクが使えない時の案内。本番では確認用の「仮の環境」は隠れているので、省電力観測モードを案内する。
+const FALLBACK_HINT=RELEASE?'「カメラを使わずに観測する」から観測できます。':'仮の環境で試せます。';
+// アプリの中のブラウザ（LINE・Instagram・Facebook・TikTokなど）では、カメラやマイクが使えないことがある。
+const IN_APP=(()=>{const ua=navigator.userAgent||'';return /\bLine\//i.test(ua)?'line':/Instagram|FBAN|FBAV|FB_IAB|BytedanceWebview|musical_ly|TikTok/i.test(ua)?'other':null;})();
 // カメラを使わない「省電力観測モード」：決まった怪異を決まった順番で出す。特別条件の怪異は出ない。
 const LITE_ROUTINE=['kuchisake','hanako','jinmenken','crossing'];
 let liteMode=false,liteIndex=0;
@@ -1144,6 +1149,8 @@ function syncStartButton(){
   if(liteMode)$('start-note').textContent=sensorsLive()?'省電力観測モード：スマホを動かして、レーダーの点を真ん中へ':'省電力観測モード：レーダーの点を指で真ん中へ';
   // センサーを拒否された時などは、控えめに案内する（特別条件があることは明かさない）。
   $('sensor-note').hidden=!(phase==='search'&&sensorNoteNeeded());
+  // アプリの中のブラウザで開いた時は、入口の下に外のブラウザで開く案内を出す。
+  $('inapp-note').hidden=!(IN_APP&&idle&&phase==='search');
 }
 function setSoundLabel(){$('sound-toggle').textContent=$('sound').checked?'音 ON':'音 OFF';$('sound-toggle').setAttribute('aria-pressed',String($('sound').checked));}
 function resumeAudio() {
@@ -1531,6 +1538,10 @@ $('start-lite').addEventListener('click',()=>{
   liteMode=true;demoMode=true;$('demo-environment').hidden=true;track('lite_start');
   $('media-status').textContent='省電力観測モード／点を真ん中に合わせて探索';clearReaction();resumeAudio();syncStartButton();
 });
+if(IN_APP){
+  $('inapp-open').hidden=IN_APP!=='line';
+  $('inapp-open').addEventListener('click',()=>{const u=new URL(location.href);u.searchParams.set('openExternalBrowser','1');location.href=u.toString();});
+}
 $('open-manual').addEventListener('click',()=>{$('manual').hidden=false;$('manual').scrollTop=0;track('manual_open');});
 $('campaign-link').addEventListener('click',()=>track('booking_click',{anomaly:selected?.name||''}));
 $('close-manual').addEventListener('click',()=>{$('manual').hidden=true;});
@@ -1578,7 +1589,7 @@ $('radar').addEventListener('pointermove',event=>{
 for(const event of ['pointerup','pointercancel','lostpointercapture'])$('radar').addEventListener(event,()=>{demoDragging=false;demoPoint=null;radarTouch=null;});
 $('media').addEventListener('click',async()=>{
   if(mediaStream){releaseMedia();$('media-status').textContent='背景は仮画像／仮の環境でも試せます';return;}
-  if(!navigator.mediaDevices?.getUserMedia){$('media-status').textContent='カメラ・マイクを利用できません。仮の環境で試せます。';return;}
+  if(!navigator.mediaDevices?.getUserMedia){$('media-status').textContent='カメラ・マイクを利用できません。'+FALLBACK_HINT;return;}
   // 動き・向きのセンサーの許可も、この1回の操作でまとめて求める（カメラ・マイクを待つ前に）。
   requestSensors();
   $('media').disabled=true;const request=++mediaRequest;const boot=bootShow();
@@ -1591,7 +1602,7 @@ $('media').addEventListener('click',async()=>{
     ]);
     const tracks=captures.flatMap(r=>r.status==='fulfilled'?r.value.getTracks():[]);
     if(request!==mediaRequest){tracks.forEach(t=>t.stop());return;}
-    if(!tracks.length)throw new Error('カメラ・マイクを開始できませんでした。許可を確認するか、仮の環境で試せます。');
+    if(!tracks.length)throw new Error('カメラ・マイクを開始できませんでした。許可を確認するか、'+FALLBACK_HINT);
     mediaStream=new MediaStream(tracks);
     const hasVideo=mediaStream.getVideoTracks().length>0,hasAudio=mediaStream.getAudioTracks().length>0;
     if(hasVideo){$('camera').srcObject=new MediaStream(mediaStream.getVideoTracks());$('camera').hidden=false;$('camera').play().catch(()=>{});}
@@ -1599,7 +1610,7 @@ $('media').addEventListener('click',async()=>{
       micSource=sensingContext.createMediaStreamSource(new MediaStream(mediaStream.getAudioTracks()));analyser=sensingContext.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=.65;spectrum=new Uint8Array(analyser.frequencyBinCount);micSource.connect(analyser);
     }
     tracks.forEach(t=>{t.addEventListener('ended',clearReaction);t.addEventListener('mute',clearReaction);});
-    if(!hasVideo&&!analyser)throw new Error('この環境では音の解析を開始できません。仮の環境で試せます。');
+    if(!hasVideo&&!analyser)throw new Error('この環境では音の解析を開始できません。'+FALLBACK_HINT);
     $('media').textContent='カメラ・マイクを止める';
     track('camera_start',{video:hasVideo,audio:!!analyser});
     await bootFinish(boot,hasVideo);
