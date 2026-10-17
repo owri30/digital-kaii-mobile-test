@@ -28,6 +28,8 @@
 @keyframes lock-radar{0%{border-color:#f0ffdb;box-shadow:0 0 10px #cfffbd70,inset 0 0 10px #cfffbd40}20%{border-color:#f6ffe8;box-shadow:0 0 46px #cfffbd90,inset 0 0 38px #cfffbd60}100%{border-color:#b1d3b4;box-shadow:0 0 28px #75be8f38,inset 0 0 0 #cfffbd00}}
 @keyframes lock-button{0%{background:#1b3427;box-shadow:0 0 10px #cfffbd60}20%{background:#d3f5bd;color:#102016;border-color:#f4ffe8;box-shadow:0 0 32px 6px #c4f5ac80}100%{background:#13221e;color:#efffe4;box-shadow:0 0 15px #a9df9e28}}
 /* 止まっていてもソナーのように回り続ける（2026-10-17ユーザー指定）。速さを切り替えると線の位置が飛ぶので、常に同じ速さ。 */#radar{touch-action:none}
+/* こっくりさんで指を当て続けても、文字の選択（青い範囲・コピーの表示）や長押しのメニューが出ないようにする（2026-10-18ユーザー指定）。 */
+#instrument[data-phase="search"],#radar,#radar *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 
 .description-control{padding:20px 24px 0}.description-control>button{width:100%}#description-panel{margin-top:18px;padding:20px;background:#0b1815;border:1px solid var(--line)}#description-panel h3{margin:0 0 14px;font-size:18px;font-weight:400;letter-spacing:.12em}#description-panel p{margin:0;font-size:15px;line-height:2;color:#c4d4c8;overflow-wrap:anywhere}
 
@@ -259,6 +261,16 @@ window.KaiiReveal = {
     koukan: [{"x":0.53,"y":0.43,"rx":0.05,"ry":0.15,"angle":0},{"x":0.27,"y":0.5,"rx":0.12,"ry":0.1,"angle":0},{"x":0.2,"y":0.36,"rx":0.05,"ry":0.04,"angle":0}],
     kidoku: [{"x":0.25,"y":0.5,"rx":0.06,"ry":0.05,"angle":0},{"x":0.45,"y":0.5,"rx":0.15,"ry":0.08,"angle":0}],
     kao: [{"x":0.56,"y":0.42,"rx":0.05,"ry":0.08,"angle":0},{"x":0.37,"y":0.35,"rx":0.08,"ry":0.2,"angle":0}],
+    sarayume: [{"x":0.25,"y":0.57,"rx":0.1,"ry":0.08,"angle":0},{"x":0.64,"y":0.38,"rx":0.18,"ry":0.06,"angle":0}],
+    tsuchigumo: [{"x":0.68,"y":0.28,"rx":0.12,"ry":0.15,"angle":0},{"x":0.56,"y":0.5,"rx":0.2,"ry":0.08,"angle":0}],
+    hitorikakurenbo: [{"x":0.53,"y":0.45,"rx":0.07,"ry":0.08,"angle":0},{"x":0.24,"y":0.3,"rx":0.05,"ry":0.04,"angle":0}],
+    flyinghumanoid: [{"x":0.5,"y":0.41,"rx":0.06,"ry":0.08,"angle":0}],
+    kokkuri: [{"x":0.53,"y":0.55,"rx":0.05,"ry":0.04,"angle":0},{"x":0.4,"y":0.43,"rx":0.07,"ry":0.08,"angle":0}],
+    kagome: [{"x":0.5,"y":0.58,"rx":0.1,"ry":0.04,"angle":0},{"x":0.5,"y":0.36,"rx":0.07,"ry":0.1,"angle":0}],
+    ushinokoku: [{"x":0.42,"y":0.3,"rx":0.05,"ry":0.05,"angle":0},{"x":0.75,"y":0.32,"rx":0.05,"ry":0.08,"angle":0},{"x":0.4,"y":0.52,"rx":0.07,"ry":0.14,"angle":0}],
+    ookamiotoko: [{"x":0.4,"y":0.55,"rx":0.1,"ry":0.17,"angle":0},{"x":0.8,"y":0.48,"rx":0.12,"ry":0.12,"angle":0}],
+    tsukinosukima: [{"x":0.5,"y":0.3,"rx":0.12,"ry":0.1,"angle":0},{"x":0.4,"y":0.55,"rx":0.18,"ry":0.08,"angle":0}],
+    bedshita: [{"x":0.15,"y":0.39,"rx":0.08,"ry":0.05,"angle":0},{"x":0.84,"y":0.28,"rx":0.07,"ry":0.1,"angle":0}],
     four44: [{"x":0.33,"y":0.36,"rx":0.03,"ry":0.05,"angle":0},{"x":0.75,"y":0.16,"rx":0.05,"ry":0.04,"angle":0},{"x":0.61,"y":0.3,"rx":0.08,"ry":0.18,"angle":0},{"x":0.77,"y":0.34,"rx":0.03,"ry":0.05,"angle":0},{"x":0.93,"y":0.37,"rx":0.06,"ry":0.06,"angle":0}]
   },
   strength(x,y,regions) {
@@ -617,8 +629,11 @@ window.KaiiReveal = {
   }
 
   // センサーを使う特別条件。成立までの時間（ミリ秒）。
-  const CONDITION_HOLD={northPillow:10000,kimon:5000,hitori:3000,flying:5000,kokkuri:10000};
-  function createConditions(){return {timers:Object.fromEntries(Object.keys(CONDITION_HOLD).map(k=>[k,0])),turn:[],clock:0};}
+  // 北枕・鬼門・真上・こっくりさん・振り向いた後は、どれも5秒止まって成立（2026-10-18ユーザー指定。ほかの動作との取り違えを防ぐ）。
+  const CONDITION_HOLD={northPillow:5000,kimon:5000,hitori:3000,flying:5000,kokkuri:5000,kagome:5000};
+  // 振り向き：正面を向いて止まり（1秒、ぶれ30度未満）、1.5秒以内に約180度向きを変え、そのまま5秒止まる。
+  const TURN={steady:1000,steadyRange:30,within:1500,sensor:160,flow:120,keep:30,flowKeep:20,miss:1000};
+  function createConditions(){return {timers:Object.fromEntries(Object.keys(CONDITION_HOLD).map(k=>[k,0])),turn:[],turned:null,clock:0};}
   // input：axes（deviceAxes の値）、absolute（{camera,top} の方位。なければ null）、rotation（回る速さ 度/秒）、
   // acceleration（重力を除いた加速度 m/s²）、dark、imageStill、centerTouch、yaw（センサーの水平の向き）、flowYaw（映像の流れから積み上げた向き）。
   // 成立した条件の名前を返す。
@@ -626,36 +641,65 @@ window.KaiiReveal = {
     const ms=Math.min(250,Math.max(0,dt)),t=state.timers,ax=input.axes||null,abs=input.absolute||null;
     state.clock+=ms;
     const rotation=input.rotation,still=rotation!=null&&rotation<8&&(input.acceleration==null||input.acceleration<.4);
-    // 少しのぶれで最初からにならないよう、外れた時はゆっくり戻すものもある（decay）。
+    // 少しのぶれで最初からにならないよう、外れた時はゆっくり戻す（decay）。
     const hold=(key,ok,decay=0)=>{t[key]=ok?t[key]+ms:decay?Math.max(0,t[key]-ms*decay):0;};
     const faceUp=!!(ax&&ax.screen.z>.85);
     // 北枕：画面を上にして平らに置き、上端が北の±30度で静止。
     hold('northPillow',faceUp&&still&&!!abs&&Math.abs(wrap180(abs.top))<=30,2);
-    // 鬼門：背面カメラを北東の±22.5度へ向ける。
-    hold('kimon',!!(ax&&abs&&Math.abs(ax.camera.z)<.8&&Math.abs(wrap180(abs.camera-45))<=22.5),2);
+    // 鬼門：背面カメラを北東の±22.5度へ向けて静止。
+    hold('kimon',!!(ax&&abs&&Math.abs(ax.camera.z)<.8&&Math.abs(wrap180(abs.camera-45))<=22.5)&&still,2);
     // 暗闇で、見回す程度に動かし続ける。
     hold('hitori',!!input.dark&&rotation!=null&&rotation>=12,1.5);
-    // カメラを真上（±20度）に向けて止まる。
-    hold('flying',!!(ax&&ax.camera.z>=Math.cos(20*RAD))&&rotation!=null&&rotation<10,2);
+    // カメラを真上（±20度）に向けて静止。
+    hold('flying',!!(ax&&ax.camera.z>=Math.cos(20*RAD))&&still,2);
     // 置いて、レーダーの中央に指を当て続ける。センサーがなければ、背面カメラが真っ暗で映像が変わらないことで「置いた」とみなす。
     const placed=(faceUp&&still)||(!ax&&!!input.dark&&!!input.imageStill);
     hold('kokkuri',placed&&!!input.centerTouch);
-    let met=Object.keys(CONDITION_HOLD).find(key=>t[key]>=CONDITION_HOLD[key])||null;
-    // 振り向き：左右どちらでも、1.5秒以内に約180度回る。センサーがなければ映像の大きく速い横の流れで代わりにする。
+    // 振り向き。センサーがなければ映像の流れから積み上げた向きで代わりにする。
     const fromSensor=input.yaw!=null&&!!ax&&Math.abs(ax.camera.z)<.85,yaw=fromSensor?input.yaw:input.flowYaw;
-    if(yaw==null){state.turn=[];}
+    if(yaw==null){state.turn=[];state.turned=null;t.kagome=0;}
     else{
       const last=state.turn[state.turn.length-1];
-      const unwrapped=last?last.yaw+wrap180(yaw-last.raw):yaw;
-      if(last&&last.sensor!==fromSensor)state.turn=[];
+      const unwrapped=last&&last.sensor===fromSensor?last.yaw+wrap180(yaw-last.raw):yaw;
+      if(last&&last.sensor!==fromSensor){state.turn=[];state.turned=null;t.kagome=0;}
       state.turn.push({at:state.clock,raw:yaw,yaw:unwrapped,sensor:fromSensor});
-      while(state.turn.length&&state.clock-state.turn[0].at>1500)state.turn.shift();
-      const values=state.turn.map(p=>p.yaw);
-      if(Math.max(...values)-Math.min(...values)>=(fromSensor?160:120)){met=met||'kagome';state.turn=[];}
+      while(state.turn.length&&state.clock-state.turn[0].at>TURN.steady+TURN.within)state.turn.shift();
+      if(state.turned){
+        // 振り向いた後：その向きのまま止まっている間だけ進む。外れた時間が続いたら、やり直し。
+        const keep=Math.abs(unwrapped-state.turned.heading)<=(fromSensor?TURN.keep:TURN.flowKeep)&&(!fromSensor||still);
+        hold('kagome',keep,2);
+        state.turned.miss=keep?0:state.turned.miss+ms;
+        if(state.turned.miss>=TURN.miss){state.turned=null;t.kagome=0;state.turn=state.turn.slice(-1);}
+      }else{
+        const before=state.turn.filter(p=>p.at<=state.clock-TURN.within),recent=state.turn.filter(p=>p.at>state.clock-TURN.within);
+        const range=list=>{const v=list.map(p=>p.yaw);return Math.max(...v)-Math.min(...v);};
+        const steadyFor=before.length?before[before.length-1].at-before[0].at:0;
+        if(steadyFor>=TURN.steady*.8&&range(before)<TURN.steadyRange&&recent.length){
+          const start=before.reduce((x,p)=>x+p.yaw,0)/before.length,need=fromSensor?TURN.sensor:TURN.flow;
+          // 行って戻る動きではなく、向きそのものが約180度変わったこと。
+          if(range(recent)>=need&&Math.abs(unwrapped-start)>=need-10){state.turned={heading:unwrapped,miss:0};t.kagome=0;}
+        }
+      }
     }
-    if(met&&t[met]!==undefined)t[met]=0;
+    const met=Object.keys(CONDITION_HOLD).find(key=>t[key]>=CONDITION_HOLD[key])||null;
+    if(met){t[met]=0;if(met==='kagome'){state.turned=null;state.turn=[];}}
     return met;
   }
+  // 日時で決まる特別条件（2026-10-18）。成立している間、見回しで点が現れる時に決まった確率でその怪異を選ぶ（必ずではない。丑三つ時は「出やすい」：ユーザー指定）。
+  // 月齢は 2000-01-06 18:14 UTC の新月から朔望月で割る簡単な式（誤差は半日以内）。観測日時の記録も同じ式で選んだ。
+  const MOON_REF=Date.UTC(2000,0,6,18,14),SYNODIC=29.530588853;
+  function moonAge(date){const days=(date.getTime()-MOON_REF)/864e5;return ((days%SYNODIC)+SYNODIC)%SYNODIC;}
+  // 13日の金曜日をいちばん先に（その日は「非常に出やすい」）。
+  const TIMED_CHANCE={friday13:.6,ushimitsu:.3,fullMoon:.3,newMoon:.3};
+  function timedConditions(date){
+    const age=moonAge(date),on=[];
+    if(date.getDate()===13&&date.getDay()===5)on.push('friday13');
+    if(date.getHours()===2&&date.getMinutes()<30)on.push('ushimitsu');
+    if(age>=13.8&&age<=15.8)on.push('fullMoon');
+    if(age>=28.5||age<=1)on.push('newMoon');
+    return on;
+  }
+  function pickTimed(active,random=Math.random){for(const key of Object.keys(TIMED_CHANCE))if(active.includes(key)&&random()<TIMED_CHANCE[key])return key;return null;}
   // 探索量が満タンになった瞬間に、その時いちばん強い候補へ特定する（2026-10-15ユーザー指定）。
   // 何かしら反応（0.3以上）があれば探索は進み、強いほど速い。止まっている間は進まない。
   function updateLock(state,strength,dt,exploring=true,distance=AIM.center){
@@ -696,7 +740,7 @@ window.KaiiReveal = {
     return {tone:mean('tone'),amount:samples.reduce((n,f)=>n+f.amount,0)/samples.length,color:mean('color'),light:mean('light'),sound,quiet,width};
   }
 
-  const api={HUE_BINS,LIGHT_BINS,TONE_LEVELS,visualMatch,lightingCast,SOUND_BANDS,AIM,CONDITION_HOLD,overlap,profileFrom,graphScore,soundBands,profiles,imageFeatures,audioFeatures,score,createLock,createScan,pickCandidate,advanceScan,sampleScan,scanVisual,scanScores,updateLock,candidateFor,imageChange,soundChange,imageMotion,wrap180,deviceAxes,bearing,elevation,createRadar,aimPosition,updateRadar,createConditions,updateConditions};
+  const api={HUE_BINS,LIGHT_BINS,TONE_LEVELS,visualMatch,lightingCast,SOUND_BANDS,AIM,CONDITION_HOLD,overlap,profileFrom,graphScore,soundBands,profiles,imageFeatures,audioFeatures,score,createLock,createScan,pickCandidate,advanceScan,sampleScan,scanVisual,scanScores,updateLock,candidateFor,imageChange,soundChange,imageMotion,wrap180,deviceAxes,bearing,elevation,createRadar,aimPosition,updateRadar,createConditions,updateConditions,moonAge,TIMED_CHANCE,timedConditions,pickTimed};
   if(typeof module!=='undefined')module.exports=api;else root.KaiiSensing=api;
 })(typeof window!=='undefined'?window:globalThis);
 </script><script>'use strict';
@@ -752,6 +796,16 @@ const scenes = {
   koukan: {"key":"koukan","name":"宇宙人との交換留学","asset":"i/e3b053497c77.jpg","type":"モクゲキ","count":4,"dates":["1959-11-08T02:16:47","1984-06-21T01:33:09","2017-03-14T23:48:26","2069-12-30T03:02:58"],"hours":[21,4],"alt":"二つの太陽が沈む砂漠。古い作業服の人々が、手を挙げる細長い宇宙人と向かい合っている。","description":"2005年、アメリカの元政府職員を名乗る匿名の人物から、UFO研究家たちのもとに奇妙なメールが届き始めた。そこには、1965年から1978年まで、選ばれた12人の米軍人が宇宙人の船に乗り、遠い星へ交換留学に行っていたと書かれていた。行き先は、レチクル座の方角にある、二つの太陽が昇る惑星セルポ。きっかけは、1940年代に墜落した円盤から助け出された宇宙人だったという。強い日差しの下で暮らした隊員たちは、帰還後にみな亡くなったとされ、地球に戻ったのは何人だったのかも、語られるたびに食い違う。証拠は何一つ見つかっておらず、作り話か、誰かの宣伝だったとみられている。それでも、二つの太陽の下で生まれ育った人々がいるという話は、今もどこかで語り継がれている。"},
   kidoku: {"key":"kidoku","name":"生まれる前の既読","asset":"i/3029385747fe.jpg","type":"ハッセイ","count":5,"dates":["2032-08-04T22:49:13","2036-01-19T23:27:40","2041-11-07T21:14:56","2049-05-25T00:06:32","2066-02-13T22:38:09"],"hours":[20,2],"alt":"まだ生まれていない子のための夜の部屋。空のベビーベッドに置かれたスマートフォンの画面が光っている。","description":"2030年代以降に報告された現象。メッセージアプリに、その時点でまだ生まれていない人物からメッセージが届いた。その相手に返信すると、のちに生まれたその人物は、生まれる前に交わしたやり取りの記憶を持っていた。"},
   kao: {"key":"kao","name":"返送された顔","asset":"i/b8905102095f.jpg","type":"ハッセイ","count":5,"dates":["2051-03-09T08:17:44","2053-10-21T18:42:05","2055-06-16T07:53:31","2057-12-04T12:26:58","2059-08-27T17:09:12"],"hours":[7,20],"alt":"朝の駅の顔認証ゲート。立ち止まった人の前の画面に、赤い枠の顔の形が映っている。","description":"2050年代、顔認証システムで相次いだ現象。自分の顔をかざすと「この人物はすでに死亡しています」と表示された。数日後、本当にその人が死亡した記録がシステムに反映された。数日後の死亡記録が、先に届いていたのではないかといわれる。"},
+  sarayume: {"key":"sarayume","name":"猿夢","asset":"i/f21e2f23f28c.jpg","type":"ハッセイ","count":5,"dates":["1936-07-19T03:12:48","1974-11-02T02:47:15","1998-05-26T04:05:33","2029-02-08T01:58:21","2077-10-14T03:33:09"],"special":true,"condition":"northPillow","alt":"霧の夜の無人駅。猿の顔をした古い遊具の電車が止まり、うつむいた乗客が一列に座っている。","description":"夢の中で、無人駅のホームに立っている。これは夢だと、自分でわかっている。やがて、遊園地にある猿の乗り物のような、小さな電車が入ってくる。乗っているのは顔色の悪い人ばかりだ。車内にアナウンスが流れ、次に何が起こるかを告げるたびに、乗客が一人、また一人と消えていく。順番は少しずつ自分に近づいてくる。自分の番が来る直前に目を覚ませば、助かる。けれど何年かたって、同じ夢はまたやって来る。そして目覚める間際、あのアナウンスの声が告げる。次に来たら、それで最後だと。2000年にインターネットの掲示板に書き込まれ、夢の話として広く知られるようになった。北を枕に眠る夜には、あの電車が近くを通るという。"},
+  tsuchigumo: {"key":"tsuchigumo","name":"土蜘蛛","asset":"i/00b9feaffbfc.jpg","type":"モクゲキ","count":5,"dates":["837-06-11T01:22:40","1052-09-03T23:48:16","1586-04-27T02:15:59","1879-08-14T00:37:28","2112-03-30T22:59:03"],"special":true,"condition":"kimon","alt":"夜の古い屋敷の座敷。開いたふすまの奥の闇から、無数の白い糸と巨大な蜘蛛の脚がのぞいている。","description":"土蜘蛛という名は、もともと怪物の名ではなかった。『古事記』『日本書紀』や各地の風土記で、ヤマト王権に従わなかった各地の人々を、朝廷の側がそう呼んだのだ。穴にこもって暮らす者という意味だったと考えられている。それがいつしか、本物の巨大な蜘蛛の妖怪として語られるようになる。病に伏せる源頼光の枕元に怪しい僧が現れ、糸を投げかけた。頼光が刀で斬りつけ、血の跡をたどると、塚の奥に巨大な蜘蛛が潜んでいた。その刀はのちに「蜘蛛切」と呼ばれたという。この話は能『土蜘蛛』になり、舞台の上で千筋の糸を投げる姿で知られている。奈良の葛城山や京都には、土蜘蛛を葬ったとされる塚が今も残る。鬼が出入りするという北東、鬼門の方角から、その糸はいまも伸びてくる。"},
+  hitorikakurenbo: {"key":"hitorikakurenbo","name":"ひとりかくれんぼ","asset":"i/e8358f87f839.jpg","type":"モクゲキ","count":5,"dates":["1958-01-23T03:14:52","1991-06-08T03:41:07","2011-10-29T03:05:36","2038-12-17T02:58:44","2069-04-05T03:27:19"],"special":true,"condition":"hitori","alt":"真夜中の暗い廊下。砂嵐のテレビの光の中、濡れたぬいぐるみが少し開いた押し入れの前に座っている。","description":"誰もいない家で、ぬいぐるみを相手にかくれんぼをする。降霊術の一つだともいわれる遊びだ。鬼になるのはぬいぐるみの方で、明かりを消した家の中、自分はどこかに隠れて息をひそめる。やがて、誰もいないはずの部屋から物音がする。勝手にテレビがつく。足音が近づいてくる。終わらせ方を間違えたり、途中で投げ出したりすると、怪異はいつまでも家に残り続けるという。関西や四国では以前から知られていたとも、都市伝説の広まり方を調べるために誰かが流した話だともいわれ、出どころははっきりしない。2007年にインターネットの掲示板に方法と体験談が書き込まれ、試した人たちの報告で一気に広まった。真っ暗な家の中を探し回っているのは、本当にあなたの方だろうか。"},
+  flyinghumanoid: {"key":"flyinghumanoid","name":"フライングヒューマノイド","asset":"i/12dc1b424b4e.jpg","type":"モクゲキ","count":5,"dates":["1823-07-06T14:22:37","1950-10-19T11:48:05","1996-03-01T16:37:44","2061-05-15T15:51:28","2088-09-09T12:13:56"],"special":true,"condition":"flying","alt":"建物の間から見上げた昼の曇り空に、ぼろ布をまとった人の形をしたものが浮かんでいる。","description":"空を見上げると、人の形をしたものが浮かんでいる。翼もなく、音もなく、手足を垂らしたまま、ゆっくりと漂っていく。体は黒っぽく、黒いマントを羽織った魔女のようだったという証言もある。2000年代に入ってからメキシコを中心に目撃が相次ぎ、映像も数多く撮られた。深夜のパトロール中の警察官が、空から襲われたという報告まである。大きさは3mほどと推測されるが、空の上にいるので本当のところはわからない。姿は一体ごとにまちまちで、宇宙人のグレイに似たものもいる。正体は人の形をした風船だという説が有力だが、宇宙人、ウイングスーツ、小さな飛行装置だとする説もあり、決着はついていない。真上を見上げたまま、しばらく動かずにいると、それは少しずつ降りてくる。"},
+  kokkuri: {"key":"kokkuri","name":"こっくりさん","asset":"i/00f46a56b660.jpg","type":"モクゲキ","count":5,"dates":["1886-11-20T19:12:44","1931-05-14T16:48:09","1974-09-26T17:21:35","2004-02-03T16:07:58","2052-06-18T17:39:20"],"special":true,"condition":"kokkuri","alt":"夕暮れの教室。寄せた机の上の鳥居を描いた紙に十円玉が一枚あり、誰もいないのに狐の影が落ちている。","description":"紙に鳥居と「はい」「いいえ」、数字と五十音を書き、その上に置いた十円玉に、みんなでそっと人差し指を添える。呼びかけると硬貨がひとりでに動き出し、問いに答えるという。狐・狗・狸の字を当てるが、もとは机がひとりでに動くのを霊のしわざとみる西洋の遊び、テーブル・ターニングだった。明治17年（1884年）に伊豆の下田に流れ着いたアメリカ人の船員が見せたのが始まりとされ、テーブルのなかった日本では、竹で支えたおひつを使った。それがこっくりと傾く様子から、この名がついたという。のちに学校で大流行し、夢中になる子どもに注意を呼びかける先生もいた。帰ってもらう前に指を離してはいけない、とも語られる。指を当てたまま、静かに待ってみるといい。"},
+  kagome: {"key":"kagome","name":"かごめかごめ","asset":"i/dca9a4a675f3.jpg","type":"モクゲキ","count":5,"dates":["1741-08-29T17:26:13","1863-10-05T16:52:40","1929-04-17T17:44:08","1982-11-11T16:31:57","2045-07-23T18:09:31"],"special":true,"condition":"kagome","alt":"夕暮れの神社の境内。輪になった着物の子どもたちが、そろってこちらを見ている。輪の中には目隠しの布が落ちている。","description":"目隠しをして輪の中にしゃがんだ鬼のまわりを、子どもたちが歌いながら回る。歌が止まった時、鬼は自分の真後ろにいるのが誰かを当てる。誰もが一度は遊んだことのあるこの古い遊び歌は、江戸時代の中ごろから文献に現れる。けれど、歌の意味は今もはっきりしない。「かごめ」は「籠女」、つまり身ごもった女性のことで、跡継ぎをめぐる争いの中で後ろから突き落とされ、子を失った女性の恨みを歌ったものだという説がある。籠の中から出られない遊女の嘆きだという説、徳川の埋蔵金のありかを示す暗号だという説もあるが、どれも確かな裏付けはない。鬼が当てようとするのは、自分の真後ろ。夕暮れにあの歌が聞こえたら、すぐには振り返らないほうがいい。"},
+  ushinokoku: {"key":"ushinokoku","name":"丑の刻参り","asset":"i/97a462b1d83b.jpg","type":"モクゲキ","count":5,"dates":["1187-10-14T02:13:46","1604-03-08T02:21:09","1836-12-01T02:07:33","1957-06-26T02:26:52","2034-11-19T02:18:05"],"special":true,"condition":"ushimitsu","alt":"真夜中の神社の森。しめ縄の御神木に藁人形が打たれ、頭にろうそくを立てた白装束の女が木の陰に立っている。","description":"草木も眠る丑の刻、真夜中の神社。白い装束に髪を振り乱し、顔を白く塗った女が、頭に鉄の輪をかぶり、そこに立てたろうそくに火をともしている。胸には鏡、足には一本歯の下駄。女は御神木に、憎い相手に見立てた藁人形を当て、五寸釘を打ちつける。七日目の夜に願いが満ちて、相手は命を落とすという。ただし、その姿を人に見られれば、呪いは効き目を失う。京都の貴船神社に丑の刻に参って願いをかける信仰が、いつしか呪いに変わったと考えられている。嫉妬から鬼になった宇治の橋姫の伝説や、能『鉄輪』も、その源の一つとされる。丑三つ時に耳を澄ますと、遠くで釘を打つ音が聞こえることがある。"},
+  ookamiotoko: {"key":"ookamiotoko","name":"狼男","asset":"i/ebcf318201f9.jpg","type":"モクゲキ","count":5,"dates":["1592-02-27T23:14:38","1777-09-17T22:41:05","1911-01-15T21:56:27","2047-12-02T23:33:50","2093-08-07T22:08:12"],"special":true,"condition":"fullMoon","alt":"満月の夜の石垣の道。毛の生えかけた男がうつむき、石垣に映る影はもう狼の形をしている。","description":"満月の夜、人が狼の姿に変わる。狼男の伝説は東ヨーロッパに古くからあり、若い戦士たちが儀式で狼になりきった風習が、やがて言い伝えになったとも考えられている。古い民話では、変身するのは満月の夜とは限らなかった。新月の夜に変わる話も、クリスマスから冬の祝日までの間に変わる話もある。満月で姿が変わり、銀の弾丸でしか倒せず、噛まれた者も狼男になる。今よく知られているこの姿は、1930〜40年代の映画が形づくったものだ。それでも人は、明るすぎる満月の夜に遠吠えを聞くと、どこか落ち着かなくなる。月が満ちる夜、測定器は、人の形と獣の形のあいだで揺れる影を拾う。"},
+  tsukinosukima: {"key":"tsukinosukima","name":"月の隙間","asset":"i/68278f029a84.jpg","type":"ハッセイ","count":5,"dates":["1361-10-08T22:47:31","1777-09-02T23:19:04","1948-06-07T22:05:46","2047-12-17T23:52:18","2093-08-22T22:31:57"],"special":true,"condition":"newMoon","alt":"月のない夜の町の空に、夜空より暗い丸い穴があき、町から影の筋が吸い上げられている。","description":"新月の夜、空から月が消える。その空いた場所に、月の形をした隙間が生まれる。光を返すものは何もないのに、そこだけ夜空が一段深く、まわりの星の並びがわずかにずれて見える。隙間は、そこにあるはずのないものを少しずつ引き寄せる。新月の夜には、ほかの怪異と出会いやすくなる。けれど、その夜に出会った怪異は、語り伝えられている姿とどこかが違っていたという記録が多い。足音が一つ多い。答えが一拍遅れて返ってくる。隙間を通って来たものは、向こう側の何かを少しずつ連れてくるらしい。月が戻ると隙間は閉じるが、引き寄せられたものがどこへ帰ったのかは記録されていない。新月の夜は、空のいちばん暗いところを長く見つめないほうがいい。"},
+  bedshita: {"key":"bedshita","name":"ベッドの下の男","asset":"i/952ba4db9058.jpg","type":"モクゲキ","count":7,"dates":["1891-02-13T23:42:18","1936-03-13T22:15:51","1965-08-13T23:08:27","1977-05-13T21:49:03","2009-02-13T22:36:44","2033-05-13T23:21:10","2071-02-13T22:54:39"],"special":true,"condition":"friday13","alt":"夜のひとり暮らしの部屋。ベッドの下のすき間に男がうずくまり、床の布団の上で女がおびえている。","description":"ひとり暮らしの部屋に、友人が泊まりに来た。ベッドは一つしかないので、部屋の主はベッドに、友人は床に敷いた布団で眠ることになった。明かりを消してしばらくすると、友人が急に、外へ出ようとしつこく誘ってくる。しぶしぶ部屋を出たところで、友人は青ざめた顔で打ち明けた。ベッドの下に、刃物を持った男がうずくまって、こちらを見ていた、と。これは怪異ではない。生きた人間の話だ。だからこそ怖いと、長く語り継がれてきた。アメリカで生まれた話とされるが、鎌倉時代の説話集にも似た話があり、本当の出どころはわからない。日本でも1990年代にはすでに広く知られていた。13日の金曜日には、この男がとりわけ多く観測される。今夜はベッドの下を確かめてから眠る人もいるだろう。"},
   four44: {"key":"four44","name":"4時44分","asset":"i/c485c9704db6.jpg","type":"モクゲキ","count":7,"dates":["1968-04-04T16:44:44","1979-11-14T04:44:44","1988-04-04T16:44:44","1999-04-14T16:44:44","2004-04-04T04:44:44","2044-04-04T16:44:44","2066-06-06T04:44:44"],"special":true,"condition":"time444","alt":"夕日の差す古い校舎の廊下。時計は4時44分を指し、鏡の中にだけ人影が立ち、階段の先は闇に消え、受話器が外れ、奥の音楽室にピアノがある。","description":"4（し）は「死」に通じる。そのため4が三つ並ぶ4時44分は、あらゆる怪異が起きる時刻だと全国の学校で語られてきた。その時刻に鏡を覗くと自分の死に顔が映る。階段の段が一つ増え、数えた者は異界へ連れて行かれる。誰もいない音楽室のピアノが鳴り、電話をかけると、この世ではない場所につながる。44秒の一瞬だけ、世界の継ぎ目がほどける。多くは放課後の午後4時44分の話だが、明け方の4時44分を恐れる人もいる。"}
 };
 let generation = 0, phase = 'search', rows = [], selected = scenes.crossing, mediaStream = null;
@@ -1147,7 +1201,8 @@ function senseEnvironment(){
   const keys=liteMode?[LITE_ROUTINE[liteIndex%LITE_ROUTINE.length]]:mode==='auto'?Object.keys(scenes):[mode];
   // 4時44分は時刻だけで成立する。確認用に手動指定した時は時刻を問わない。
   // センサーの特別条件の怪異は、色と音では出ない（条件の成立で startRush から捕捉する）。
-  const matchOf=(key,scanImage)=>{const scene=scenes[key];return scene.condition==='time444'?(mode===key||isFourFortyFour(clock)?1:0):scene.condition?0:S.score(key,scanImage,audio)*hourFactor(scene,clock);};
+  // 日時の特別条件の怪異（丑の刻参り・狼男・月の隙間・ベッドの下の男）も色と音では出ない。手動指定した時だけ常に出る。
+  const matchOf=(key,scanImage)=>{const scene=scenes[key];return scene.condition==='time444'?(mode===key||isFourFortyFour(clock)?1:0):scene.condition?(mode===key&&S.TIMED_CHANCE[scene.condition]?1:0):S.score(key,scanImage,audio)*hourFactor(scene,clock);};
   // 通常の走査は三段階。前半・後半のランダムな位置で色分布を一回ずつ採り、均等に合成。
   // カメラは動き・暗さ・特殊条件用に常時解析するが、通常候補用の景色はこの二回だけ。
   if(!scan.found&&!lockState.locked&&!rush&&!specialHold){
@@ -1164,7 +1219,10 @@ function senseEnvironment(){
     const sampled=scan.candidate||scan.samples.length===2||(!cameraExpected&&!visual);
     if(scan.travel>=scan.required&&sampled){
       // 上位5体から反応の差に応じた確率で選ぶ（いろいろな景色で出現がばらつくように。2026-10-18）。
-      const best=scan.candidate||S.pickCandidate(patternStrengths);
+      // 日時の特別条件が成立していれば、まず決まった確率でその怪異（自動の時だけ。省電力観測モードでは出ない）。
+      const timedCondition=!liteMode&&mode==='auto'?S.pickTimed(S.timedConditions(clock)):null,timedKey=timedCondition&&sceneForCondition(timedCondition);
+      if(timedKey)patternStrengths[timedKey]=.95;
+      const best=scan.candidate||timedKey||S.pickCandidate(patternStrengths);
       if(best){
         scan.found=true;scan.candidate=best;candidate=best;strength=patternStrengths[best];scan.samples=[];
         radarTrace.yaw=null;S.updateRadar(radarTrace,{active:false,locked:false,aim,dt:0});shownTrace=null;
@@ -1661,6 +1719,9 @@ $('radar').addEventListener('pointermove',event=>{
   }
   demoPoint={x:event.clientX,y:event.clientY};
 });
+// 長押しで文字の選択・メニュー・虫めがねが出ないようにする（こっくりさんで指を当て続けるため）。
+for(const event of ['contextmenu','selectstart','dragstart'])$('radar').addEventListener(event,e=>e.preventDefault());
+$('radar').addEventListener('touchstart',e=>{if(phase==='search'&&e.cancelable)e.preventDefault();},{passive:false});
 for(const event of ['pointerup','pointercancel','lostpointercapture'])$('radar').addEventListener(event,()=>{demoDragging=false;demoPoint=null;radarTouch=null;});
 $('media').addEventListener('click',async()=>{
   if(mediaStream){releaseMedia();$('media-status').textContent='背景は仮画像／仮の環境でも試せます';return;}
