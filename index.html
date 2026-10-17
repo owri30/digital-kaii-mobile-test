@@ -110,6 +110,9 @@ html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:
 .hud-row{display:flex;align-items:flex-end;gap:10px;white-space:nowrap}
 .hud-panel canvas{width:96px}
 .inapp-note{color:#c9d8c4}.inapp-open{display:block;margin:8px auto 0;padding:8px 18px;font-size:13px;letter-spacing:.08em}
+/* 確認用の上部の欄：特別条件の選択が増えて横幅が足りない時は折り返す（2026-10-18。題名が縦に押しつぶされていた）。 */
+.workbench{flex-wrap:wrap;row-gap:8px}.workbench>span:first-child{flex:1 1 auto;min-width:max-content}.workbench>label{flex:0 0 auto;white-space:nowrap}
+@media(max-width:520px){.workbench>span:first-child{flex-basis:100%}.workbench>label:first-of-type{margin-left:0}}
 </style>
 </head>
 <body>
