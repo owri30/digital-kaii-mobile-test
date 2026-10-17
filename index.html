@@ -635,7 +635,8 @@ window.KaiiReveal = {
   // 北枕・鬼門・真上・こっくりさん・振り向いた後は、どれも5秒止まって成立（2026-10-18ユーザー指定。ほかの動作との取り違えを防ぐ）。
   const CONDITION_HOLD={northPillow:5000,kimon:5000,hitori:3000,flying:5000,kokkuri:5000,kagome:5000};
   // 振り向き：正面を向いて止まり（1秒、ぶれ30度未満）、1.5秒以内に約180度向きを変え、そのまま5秒止まる。
-  const TURN={steady:1000,steadyRange:30,within:1500,sensor:160,flow:120,keep:30,flowKeep:20,miss:1000};
+  // 振り向いた勢いで回り過ぎたり揺れたりするので、判定後1.5秒は落ち着くのを待ち、止まった向きを基準にする（2026-10-18、実機で成立しにくかった）。
+  const TURN={steady:1000,steadyRange:30,within:1500,sensor:150,flow:120,keep:40,flowKeep:25,settle:1500,miss:1500};
   function createConditions(){return {timers:Object.fromEntries(Object.keys(CONDITION_HOLD).map(k=>[k,0])),turn:[],turned:null,clock:0};}
   // input：axes（deviceAxes の値）、absolute（{camera,top} の方位。なければ null）、rotation（回る速さ 度/秒）、
   // acceleration（重力を除いた加速度 m/s²）、dark、imageStill、centerTouch、yaw（センサーの水平の向き）、flowYaw（映像の流れから積み上げた向き）。
@@ -668,11 +669,14 @@ window.KaiiReveal = {
       state.turn.push({at:state.clock,raw:yaw,yaw:unwrapped,sensor:fromSensor});
       while(state.turn.length&&state.clock-state.turn[0].at>TURN.steady+TURN.within)state.turn.shift();
       if(state.turned){
-        // 振り向いた後：その向きのまま止まっている間だけ進む。外れた時間が続いたら、やり直し。
-        const keep=Math.abs(unwrapped-state.turned.heading)<=(fromSensor?TURN.keep:TURN.flowKeep)&&(!fromSensor||still);
+        // 振り向いた後：落ち着くまで（止まるか1.5秒たつまで）は基準の向きを今の向きに合わせ続ける。その後、その向きのまま止まっている間だけ進む。
+        const T=state.turned,calm=fromSensor?still:Math.abs(unwrapped-T.heading)<=TURN.flowKeep;
+        T.age+=ms;
+        if(!T.settled){T.heading=unwrapped;if(calm||T.age>=TURN.settle)T.settled=true;}
+        const keep=T.settled&&Math.abs(unwrapped-T.heading)<=(fromSensor?TURN.keep:TURN.flowKeep)&&(!fromSensor||still);
         hold('kagome',keep,2);
-        state.turned.miss=keep?0:state.turned.miss+ms;
-        if(state.turned.miss>=TURN.miss){state.turned=null;t.kagome=0;state.turn=state.turn.slice(-1);}
+        T.miss=keep||!T.settled?0:T.miss+ms;
+        if(T.miss>=TURN.miss){state.turned=null;t.kagome=0;state.turn=state.turn.slice(-1);}
       }else{
         const before=state.turn.filter(p=>p.at<=state.clock-TURN.within),recent=state.turn.filter(p=>p.at>state.clock-TURN.within);
         const range=list=>{const v=list.map(p=>p.yaw);return Math.max(...v)-Math.min(...v);};
@@ -680,7 +684,7 @@ window.KaiiReveal = {
         if(steadyFor>=TURN.steady*.8&&range(before)<TURN.steadyRange&&recent.length){
           const start=before.reduce((x,p)=>x+p.yaw,0)/before.length,need=fromSensor?TURN.sensor:TURN.flow;
           // 行って戻る動きではなく、向きそのものが約180度変わったこと。
-          if(range(recent)>=need&&Math.abs(unwrapped-start)>=need-10){state.turned={heading:unwrapped,miss:0};t.kagome=0;}
+          if(range(recent)>=need&&Math.abs(unwrapped-start)>=need-10){state.turned={heading:unwrapped,miss:0,age:0,settled:false};t.kagome=0;}
         }
       }
     }
