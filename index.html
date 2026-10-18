@@ -127,7 +127,7 @@ html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:
     <div class="brand"><span>時相観測装置</span><h1>デジタル怪異測定器</h1></div>
     <section id="search" aria-label="サーチ">
       <div class="radar" id="radar"><div class="radar-grid"></div><div class="sweep"></div><div class="signal"></div><span class="aim-ring" aria-hidden="true"></span><span class="crosshair"></span><span class="radar-label">SCANNING</span></div>
-      <p id="signal-label">探知中</p><p id="debug-numbers" class="debug-numbers" hidden></p><button id="start-media" class="start-media">カメラとマイクで探す</button><p id="start-note" class="start-note">映像・音声・端末の動きは端末の中だけで使い、保存・送信しません</p><p id="inapp-note" class="start-note inapp-note" hidden>アプリの中のブラウザでは、カメラやマイクが使えないことがあります。うまく動かない時は、SafariやChromeで開いてください。<button id="inapp-open" type="button" class="inapp-open" hidden>ブラウザで開く</button></p><p id="sensor-note" class="start-note sensor-note" hidden>動きのセンサーが使えないため、一部の痕跡は探知できません</p><button id="start-lite" type="button" class="start-lite">カメラを使わずに観測する</button><button id="measure" disabled>測定開始</button>
+      <p id="signal-label">探知中</p><p id="debug-numbers" class="debug-numbers" hidden></p><button id="start-media" class="start-media">カメラとマイクで探す</button><p id="start-note" class="start-note">映像・音声・端末の動き・位置情報は端末の中だけで使い、保存・送信しません</p><p id="inapp-note" class="start-note inapp-note" hidden>アプリの中のブラウザでは、カメラやマイクが使えないことがあります。うまく動かない時は、SafariやChromeで開いてください。<button id="inapp-open" type="button" class="inapp-open" hidden>ブラウザで開く</button></p><p id="sensor-note" class="start-note sensor-note" hidden>動きのセンサーが使えないため、一部の痕跡は探知できません</p><button id="start-lite" type="button" class="start-lite">カメラを使わずに観測する</button><button id="measure" disabled>測定開始</button>
     </section>
     <section id="reading" hidden aria-label="観測中">
       <div class="reading-title">時相照合</div><div id="digits" aria-hidden="true">0000.00.00<br>00:00:00</div><div id="records" aria-label="確定した観測記録"></div><div id="phase-label" role="status">測定中</div>
@@ -147,7 +147,7 @@ html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:
         <p>本機は、その場所に残された過去と未来の「時空の痕跡」を、景色の色・明るさと周囲の音から探知する観測装置です。いまそこに怪異がいるわけではありません。たぶん。</p>
         <h3>観測のしかた</h3>
         <ol>
-          <li>「カメラとマイクで探す」を押し、カメラ・マイクと、端末の動きと向きの使用を許可してください。</li>
+          <li>「カメラとマイクで探す」を押し、カメラ・マイクと、端末の動きと向きの使用を許可してください。続けて位置情報の使用を求められます。許可すると、ある場所でしか観測されない痕跡も探知できるようになります（許可しなくても、ほかの観測はふつうにできます）。</li>
           <li>その場でスマホを構え、ゆっくり周りを見回してください。本機が景色と音を走査し、痕跡が見つかるとレーダーに光る点が現れます。</li><li>レーダーの真ん中は、カメラが向いている先です。点の方へスマホを向け、点を真ん中に合わせている間だけ痕跡が集まります。点は漂い、ときどき逃げます。見失ったら、また見回してください。場所や音が変われば、反応する怪異も変わります。</li>
           <li>真ん中の輪が満ちると、そのとき最も強く反応している怪異を捕捉します。「測定開始」で、観測日時が次々に確定していきます。</li>
           <li>観測が終わると、怪異の姿が現れます。画像を保存して、観測記録を共有できます。</li>
@@ -157,7 +157,7 @@ html[data-release="1"] .workbench,html[data-release="1"] .debug-numbers{display:
         <h3>カメラとマイクを使わない場合</h3>
         <p>カメラとマイクを使わない場合、本機は「省電力観測モード」で動作します。スマホを動かしてレーダーの点を真ん中に合わせると探索が進みます（動きのセンサーが使えない端末では、点を指でなぞって動かします）。ただし、観測できるのは本機にあらかじめ記録された一部の怪異だけで、毎回決まった順番に現れます。特別な条件の下でしか現れない怪異は、この方法では決して観測できません。本機の真価は、あなたの目と耳の代わりとなるカメラとマイクがあってこそ発揮されます。</p>
         <h3>映像と音、アクセス解析について</h3>
-        <p>カメラの映像とマイクの音は、端末の中で色と音の傾向を数値にするためだけに使います。端末の動きと向きは、レーダーの照準を動かすことと観測の判定にだけ使います。録画・録音・保存・送信は一切しません。</p>
+        <p>カメラの映像とマイクの音は、端末の中で色と音の傾向を数値にするためだけに使います。端末の動きと向きは、レーダーの照準を動かすことと観測の判定にだけ使います。位置情報は、ある場所でしか観測されない痕跡の判定のためだけに、端末の中で使います（おおまかな位置で、決まった範囲の中にいるかどうかだけを見ます）。録画・録音・位置の保存・送信は一切しません。</p><p>一部の観測では、映像の中のものを見分けるための公開されたプログラムと学習データを、外部の配信元（jsDelivr・Google）から読み込みます。読み込むだけで、映像はそこへ送りません。</p>
         <p>本機の利用状況を知るために、Google LLC のアクセス解析ツール「Google アナリティクス」を使っています。Cookie を使い、閲覧したページ、押したボタンの種類、観測された怪異の名前、端末やブラウザの種類、おおよその地域などを Google に送信します。映像と音は送信しません。データは個人を特定しない形で集計されます。計測を止めたい場合は、ブラウザの設定で Cookie を無効にするか、<a href="https://tools.google.com/dlpage/gaoptout?hl=ja" target="_blank" rel="noopener">Google アナリティクス オプトアウト アドオン</a>をご利用ください。</p>
         <h3>安全のために</h3>
         <ul>
