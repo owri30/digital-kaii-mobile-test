@@ -718,7 +718,8 @@ window.KaiiReveal = {
     const audio=input.audio;
     hold('hum',!!(audio&&audio.bands&&audio.bands[0]>=HUM.lowShare&&audio.energy>=HUM.energy),1.5);
     // 紫鏡：物体認識で鏡の中の「スマホを構えた人」が見えていて、端末が止まっている（センサーがなければ映像が変わらないこと）。
-    hold('mirror',!!input.mirrorSeen&&(still||(rotation==null&&!!input.imageStill)),2);
+    // 鏡の前で手で構えるので、静止は少し緩め（回転15度/秒未満）。
+    hold('mirror',!!input.mirrorSeen&&((rotation!=null&&rotation<15)||(rotation==null&&!!input.imageStill)),2);
     let met=Object.keys(CONDITION_HOLD).find(key=>t[key]>=CONDITION_HOLD[key])||null;
     if(met){t[met]=0;if(met==='kagome'){state.turned=null;state.turn=[];}if(met==='blackout')state.blackout=false;}
     // スクエア：暗闇で、手を叩く音がほぼ一定の間隔で4回続く。明るくなったら数え直し。
@@ -895,10 +896,11 @@ function startLocation(){if(geo.timer||!sceneForCondition('shimokita'))return;ch
 function stopLocation(){clearInterval(geo.timer);geo.timer=null;geo.inside=false;}
 // 紫鏡：鏡に映った「スマホを構えた人」を、端末の中で動く公開済みの学習済み物体認識（COCO-SSD 軽量版）で見る。
 // 映像は端末の外に送らない。読み込み（数MB）は、カメラで探している時に端末が2秒止まってから始める。
-const mirror={model:null,loading:false,failed:false,busy:false,lastRun:0,seenAt:-1e9,stillSince:null};
+// 2026-10-19：実機で認識されなかったので、読み込みを1秒の静止で始め、基準を緩めた（人0.4以上・スマホ0.2以上）。確認用に状態を「数値」に出す。
+const mirror={model:null,loading:false,failed:false,busy:false,lastRun:0,seenAt:-1e9,stillSince:null,last:'',loadStart:0};
 const loadScript=src=>new Promise((ok,ng)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=ng;document.head.append(s);});
 async function loadMirrorModel(){
-  if(mirror.model||mirror.loading||mirror.failed)return;mirror.loading=true;
+  if(mirror.model||mirror.loading||mirror.failed)return;mirror.loading=true;mirror.loadStart=performance.now();
   try{
     if(!window.tf)await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
     if(!window.cocoSsd)await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
@@ -909,12 +911,13 @@ function watchMirror(now,still){
   if(!sceneForCondition('mirror')||demoMode||liteMode)return false;
   const video=$('camera');if(!still||video.hidden||video.readyState<2){mirror.stillSince=null;return now-mirror.seenAt<1500;}
   mirror.stillSince??=now;
-  if(now-mirror.stillSince>=2000){
+  if(now-mirror.stillSince>=1000){
     if(!mirror.model)loadMirrorModel();
     else if(!mirror.busy&&now-mirror.lastRun>=700){
       mirror.busy=true;mirror.lastRun=now;
-      mirror.model.detect(video,6,.45).then(found=>{
-        const people=found.filter(f=>f.class==='person'),phones=found.filter(f=>f.class==='cell phone');
+      mirror.model.detect(video,8,.2).then(found=>{
+        mirror.last=found.map(f=>(f.class==='person'?'人':f.class==='cell phone'?'スマホ':f.class)+Math.round(f.score*100)).join(' ')||'なし';
+        const people=found.filter(f=>f.class==='person'&&f.score>=.4),phones=found.filter(f=>f.class==='cell phone'&&f.score>=.2);
         // 人の枠の中（少し広げた範囲）にスマホがあれば「スマホを構えた人」。
         const inside=(p,b)=>{const [x,y,w,h]=p.bbox,[bx,by,bw,bh]=b.bbox,cx=bx+bw/2,cy=by+bh/2;return cx>=x-w*.15&&cx<=x+w*1.15&&cy>=y-h*.1&&cy<=y+h*1.1;};
         if(people.some(p=>phones.some(b=>inside(p,b))))mirror.seenAt=performance.now();
@@ -1221,7 +1224,7 @@ function paintReaction(){
     const aim=currentAim(),f=n=>n==null?'—':Math.round(n);
     const timers=Object.entries(conditions.timers).filter(([k,v])=>v>0&&sceneForCondition(k)).map(([k,v])=>SENSOR_CONDITIONS[k]+' '+(v/1000).toFixed(1)+'秒').join('／');
     $('debug-numbers').textContent=(top||'入力待ち')+'　探索 '+Math.round(100*progress)+'%'
-      +`\nセンサー ${sensors.state}　向き ${f(((aim.yaw%360)+360)%360)}° 仰角 ${f(aim.pitch)}° 回転 ${f(sensors.rotation)}°/秒 方位 ${f(sensors.absCamera)}°${darkView?'　暗い':''}${timers?'\n'+timers:''}`;
+      +`\nセンサー ${sensors.state}　向き ${f(((aim.yaw%360)+360)%360)}° 仰角 ${f(aim.pitch)}° 回転 ${f(sensors.rotation)}°/秒 方位 ${f(sensors.absCamera)}°${darkView?'　暗い':''}${timers?'\n'+timers:''}${sceneForCondition('mirror')?'\n鏡の認識 '+(mirror.failed?'読み込み失敗':mirror.model?'準備OK　'+(mirror.last||'—')+(performance.now()-mirror.seenAt<1500?'　★構えた人':''):mirror.loading?'読み込み中 '+Math.round((performance.now()-mirror.loadStart)/1000)+'秒':'止まると読み込み開始'):''}`;
   }
   $('debug-numbers').hidden=!$('show-numbers').checked;
   syncStartButton();
@@ -1302,7 +1305,7 @@ function senseEnvironment(){
       rotation:live?sensors.rotation:null,acceleration:live?sensors.acceleration:null,
       dark:!demoMode&&darkView,imageStill:lastImageChange<.01,centerTouch:!!radarTouch?.center,
       brightness:!demoMode&&visual?visual.brightness:null,audio:demoMode?null:audio,clapOffsets:demoMode?[]:clapOffsets,
-      mirrorSeen:watchMirror(now,live?(sensors.rotation!=null&&sensors.rotation<8):lastImageChange<.02),
+      mirrorSeen:watchMirror(now,live?(sensors.rotation!=null&&sensors.rotation<15):lastImageChange<.03),
       yaw:live?sensors.yaw:null,flowYaw:demoMode?null:flowYaw
     },dt);
     if(met)startRush(met);
