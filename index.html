@@ -214,6 +214,7 @@ window.KaiiCampaign = {
 window.KaiiReveal = {
   particleCounts: {feature:1800,background:1800},
   regions: {
+    unicorn: [{x:.5,y:.24,rx:.08,ry:.18,angle:0},{x:.5,y:.48,rx:.3,ry:.16,angle:0}],
     kuchisake: [{"x":0.48,"y":0.33,"rx":0.08,"ry":0.22,"angle":0},{"x":0.58,"y":0.58,"rx":0.1,"ry":0.04,"angle":0}],
     hasshaku: [{"x":0.55,"y":0.27,"rx":0.06,"ry":0.12,"angle":0},{"x":0.5,"y":0.42,"rx":0.38,"ry":0.045,"angle":0},{"x":0.76,"y":0.58,"rx":0.03,"ry":0.06,"angle":0}],
     kunekune: [{"x":0.502,"y":0.44,"rx":0.04,"ry":0.045,"angle":0},{"x":0.5,"y":0.62,"rx":0.05,"ry":0.12,"angle":0}],
@@ -400,12 +401,13 @@ window.KaiiReveal = {
     return share>0?mean.map(v=>share*v):null;
   }
   function imageFeatures(pixels){
-    let r=0,g=0,b=0,s=0,amount=0,n=pixels.length/4;
+    let r=0,g=0,b=0,s=0,amount=0,white=0,n=pixels.length/4;
     if(!n)return null;
     const cast=lightingCast(pixels);
     const color=new Array(HUE_BINS+1).fill(0),light=new Array(LIGHT_BINS).fill(0),tone=new Array((HUE_BINS+1)*TONE_LEVELS).fill(0);
     for(let i=0;i<pixels.length;i+=4){
       let a=pixels[i]/255,c=pixels[i+1]/255,d=pixels[i+2]/255;
+      if(Math.min(a,c,d)>=.65&&Math.max(a,c,d)-Math.min(a,c,d)<=.18)white++;
       if(cast){a=Math.min(1,a/(1+cast[0]));c=Math.min(1,c/(1+cast[1]));d=Math.min(1,d/(1+cast[2]));}
       const max=Math.max(a,c,d),min=Math.min(a,c,d),chroma=max-min,lum=a*.2126+c*.7152+d*.0722;
       r+=a;g+=c;b+=d;s+=max?(chroma/max):0;
@@ -419,7 +421,7 @@ window.KaiiReveal = {
       const l=Math.max(0,Math.min(LIGHT_BINS-1,lum*LIGHT_BINS-.5)),ll=Math.min(LIGHT_BINS-2,Math.floor(l)),lf=l-ll;
       light[ll]+=1-lf;light[ll+1]+=lf;
     }
-    return {brightness:(r*.2126+g*.7152+b*.0722)/n,warmth:(r-b)/n,saturation:s/n,color:normalize(color),light:normalize(light),tone:normalize(tone),amount:amount/n,cast:!!cast};
+    return {whiteFraction:white/n,brightness:(r*.2126+g*.7152+b*.0722)/n,warmth:(r-b)/n,saturation:s/n,color:normalize(color),light:normalize(light),tone:normalize(tone),amount:amount/n,cast:!!cast};
   }
   function normalize(values){const total=values.reduce((a,b)=>a+b,0);return values.map(v=>total>0?v/total:0);}
   // Shared overlap of two graphs: 1 when identical, 0 when nothing in common.
@@ -648,7 +650,7 @@ window.KaiiReveal = {
 
   // センサーを使う特別条件。成立までの時間（ミリ秒）。
   // 北枕・鬼門・真上・こっくりさん・振り向いた後は、どれも5秒止まって成立（2026-10-18ユーザー指定。ほかの動作との取り違えを防ぐ）。
-  const CONDITION_HOLD={northPillow:5000,kimon:5000,hitori:3000,flying:5000,kokkuri:5000,kagome:5000,blackout:3000,hum:5000,mirror:5000};
+  const CONDITION_HOLD={unicorn:7000,northPillow:5000,kimon:5000,hitori:3000,flying:5000,kokkuri:5000,kagome:5000,blackout:3000,hum:5000,mirror:5000};
   // 第7弾（2026-10-19）：神隠し＝明るい所から1秒以内に真っ暗になり3秒、エレベーター＝低いうなり音が5秒、紫鏡＝鏡に映った「スマホを構えた人」を静止して5秒、
   // スクエア＝暗闇で手を叩く音が0.45〜2.1秒のほぼ一定の間隔で4回（CLAP）。
   const BLACKOUT={bright:.3,dark:.06,within:1000},HUM={lowShare:.6,energy:.3},CLAP={count:4,min:450,max:2100,ratio:1.7};
@@ -663,10 +665,20 @@ window.KaiiReveal = {
     const ms=Math.min(250,Math.max(0,dt)),t=state.timers,ax=input.axes||null,abs=input.absolute||null;
     state.clock+=ms;
     const rotation=input.rotation,still=rotation!=null&&rotation<8&&(input.acceleration==null||input.acceleration<.4);
+    // Secret: real fresh camera image, one central finger, seven continuous seconds.
+    let unicornReady=input.whiteFraction>=.55&&input.singleTouch===true&&input.centerTouch===true&&input.imageStill===true
+      &&(ax?still:true);
+    if(unicornReady&&ax){
+      state.unicornPose??=ax;
+      const angle=(a,b)=>Math.acos(Math.max(-1,Math.min(1,a.x*b.x+a.y*b.y+a.z*b.z)))*180/Math.PI;
+      if(Math.max(angle(ax.camera,state.unicornPose.camera),angle(ax.top,state.unicornPose.top))>3)unicornReady=false;
+    }
+    if(!unicornReady)state.unicornPose=null;
     // 少しのぶれで最初からにならないよう、外れた時はゆっくり戻す（decay）。
     const hold=(key,ok,decay=0)=>{t[key]=ok?t[key]+ms:decay?Math.max(0,t[key]-ms*decay):0;};
     const faceUp=!!(ax&&ax.screen.z>.85);
     // 北枕：画面を上にして平らに置き、上端が北の±30度で静止。
+    hold('unicorn',unicornReady);
     hold('northPillow',faceUp&&still&&!!abs&&Math.abs(wrap180(abs.top))<=30,2);
     // 鬼門：背面カメラを北東の±22.5度へ向けて静止。
     hold('kimon',!!(ax&&abs&&Math.abs(ax.camera.z)<.8&&Math.abs(wrap180(abs.camera-45))<=22.5)&&still,2);
@@ -720,7 +732,7 @@ window.KaiiReveal = {
     // 紫鏡：物体認識で鏡の中の「スマホを構えた人」が見えていて、端末が止まっている（センサーがなければ映像が変わらないこと）。
     // 鏡の前で手で構えるので、静止は少し緩め（回転15度/秒未満）。
     hold('mirror',!!input.mirrorSeen&&((rotation!=null&&rotation<15)||(rotation==null&&!!input.imageStill)),2);
-    let met=Object.keys(CONDITION_HOLD).find(key=>t[key]>=CONDITION_HOLD[key])||null;
+    let met=unicornReady?(t.unicorn>=CONDITION_HOLD.unicorn?'unicorn':null):Object.keys(CONDITION_HOLD).find(key=>key!=='unicorn'&&t[key]>=CONDITION_HOLD[key])||null;
     if(met){t[met]=0;if(met==='kagome'){state.turned=null;state.turn=[];}if(met==='blackout')state.blackout=false;}
     // スクエア：暗闇で、手を叩く音がほぼ一定の間隔で4回続く。明るくなったら数え直し。
     if(!input.dark)state.claps=[];
@@ -730,7 +742,7 @@ window.KaiiReveal = {
       const last=state.claps.slice(-CLAP.count),gaps=last.slice(1).map((at,i)=>at-last[i]);
       if(gaps.every(g=>g>=CLAP.min&&g<=CLAP.max)&&Math.max(...gaps)/Math.min(...gaps)<=CLAP.ratio){met=met||'claps';state.claps=[];}
     }
-    return met;
+    return unicornReady&&met!=='unicorn'?null:met;
   }
   // 手を叩く音の立ち上がり：samples（-1〜1の時間波形）の最後の newCount 個のうち、急に大きくなった所を、終わりからの時間（ミリ秒）で返す。
   function clapOnsets(samples,sampleRate,newCount){
@@ -879,6 +891,7 @@ const scenes = {
   murasakikagami: {"key":"murasakikagami","name":"紫鏡","asset":"i/ceafd80e7dc4.jpg","type":"ハッセイ","count":5,"dates":["1958-02-19T21:36:44","1979-10-08T16:52:17","1996-01-15T20:14:39","2012-05-27T17:41:03","2055-12-03T21:58:26"],"special":true,"condition":"mirror","alt":"夕暮れの古い学校の洗面所。紫に染まっていく鏡の奥に、部屋にはいない少女が映っている。","description":"「紫の鏡」という言葉を、二十歳になるまで覚えていると、不幸になる。死んでしまうという話もある。学校で誰かがこの話をすると、聞いた子どもたちは、忘れようとすればするほど忘れられなくなった。少女が鏡を紫の絵の具で塗り、それが取れなくなった、という話が添えられることもあれば、成人式を前に亡くなった女性の部屋から紫の鏡が見つかった、という話が添えられることもある。ただし、助かる方法も語り継がれている。「白い水晶」という言葉を一緒に覚えておけば、不幸にはならないという。この文章を読んでしまった人は、念のため、もう一つの言葉も覚えておくといい。鏡の前でスマホを構えたまま、じっと動かずにいると、鏡の奥が少しずつ紫に染まっていく。"},
   elevator: {"key":"elevator","name":"エレベーターで異世界に行く方法","asset":"i/61a198c79d03.jpg","type":"ハッセイ","count":5,"dates":["1971-04-06T23:16:42","1998-12-19T01:38:05","2016-08-10T22:47:59","2039-03-02T00:25:14","2067-10-27T23:51:30"],"special":true,"condition":"hum","alt":"夜のマンションのエレベーター。開いた扉の先は誰もいない廊下で、遠くに赤い十字の光が見える。隅には女のコートのすそだけが見えている。","description":"一人でエレベーターに乗り、決められた順番で階のボタンを押していくと、この世界とよく似た、別の世界に行けるという。その順番はここには書かない。途中のある階で、一人の女性が乗ってくることがある。その人に話しかけてはいけない。顔を見てもいけない。最後のボタンを押したとき、エレベーターは下ではなく上へ動き出す。扉が開いた先は、見慣れた建物と同じ形をしているのに、人が誰もいない。明かりのついている窓は一つだけで、遠くに赤い十字の光が見えた、という話もある。帰ってこられた人の話だけが残っている。冷蔵庫や室外機の低いうなりが、いつもより長く耳に残る夜は、どこかでエレベーターが動いている。"},
   square: {"key":"square","name":"スクエア（四隅の怪）","asset":"i/96db1e7fb24f.jpg","type":"ハッセイ","count":5,"dates":["1937-01-28T02:41:17","1962-02-05T03:18:44","1985-12-22T01:56:09","2008-01-17T04:12:38","2061-02-14T02:27:53"],"special":true,"condition":"claps","alt":"吹雪の夜の真っ暗な山小屋。部屋の隅にうずくまる登山者たちのあいだを、もう一人が壁ぞいに歩いて肩へ手を伸ばしている。","description":"吹雪の雪山で遭難した4人が、無人の山小屋にたどり着いた。眠れば凍えて死んでしまう。そこで4人は、真っ暗な部屋の四隅に一人ずつ座り、壁伝いに歩いて次の隅の人の肩を叩き、叩かれた人がまた次の隅へ歩く、という決まりを作った。肩を叩く音だけが、朝まで途切れずに続いた。夜が明けて助かった後、一人が気づく。最初の隅には誰もいなくなるはずだから、この回り方は、4人では続かない。5人目がいなければ。話の成り立ちははっきりしないが、雪山の一夜の話として、さまざまな形で語られてきた。真っ暗な部屋で、一拍ずつ手を叩き続けてみるといい。叩いた数が、いつのまにか一つ多くなっていることがある。"},
+  unicorn: {"key":"unicorn","name":"ユニコーン","asset":"i/b2c9f5b53ad7.jpg","type":"モクゲキ","count":5,"dates":["1427-05-18T10:23:16","1873-09-06T15:41:28","2028-04-21T11:07:35","2076-06-12T16:32:09","2189-03-24T09:48:52"],"condition":"unicorn","secret":true,"alt":"やわらかな日差しの草地にたたずむ、一本の角を持つ白いユニコーン。","description":"白いものを見つめて、一本の指を添えて待つ。追いかけていたときには見えなかった白い馬が、こちらを見ている。額には、一本の角。測定器に残った記録では、いつも人が探すのをやめたころに姿を現していた。名前を知らなくても、見つけることはできる。いつもの景色には、まだ見つけていないものがある。"},
   four44: {"key":"four44","name":"4時44分","asset":"i/c485c9704db6.jpg","type":"モクゲキ","count":7,"dates":["1968-04-04T16:44:44","1979-11-14T04:44:44","1988-04-04T16:44:44","1999-04-14T16:44:44","2004-04-04T04:44:44","2044-04-04T16:44:44","2066-06-06T04:44:44"],"special":true,"condition":"time444","alt":"夕日の差す古い校舎の廊下。時計は4時44分を指し、鏡の中にだけ人影が立ち、階段の先は闇に消え、受話器が外れ、奥の音楽室にピアノがある。","description":"4（し）は「死」に通じる。そのため4が三つ並ぶ4時44分は、あらゆる怪異が起きる時刻だと全国の学校で語られてきた。その時刻に鏡を覗くと自分の死に顔が映る。階段の段が一つ増え、数えた者は異界へ連れて行かれる。誰もいない音楽室のピアノが鳴り、電話をかけると、この世ではない場所につながる。44秒の一瞬だけ、世界の継ぎ目がほどける。多くは放課後の午後4時44分の話だが、明け方の4時44分を恐れる人もいる。"}
 };
 let generation = 0, phase = 'search', rows = [], selected = scenes.crossing, mediaStream = null;
@@ -935,10 +948,11 @@ let radarTrace=window.KaiiSensing.createRadar(),demoPoint=null;
 // flowAim：映像の流れで照準に足した分。走査量では、照準の向きとは別に正味の流れとして数える（手ぶれ対策）。
 let manualAim={yaw:0,pitch:0},flowAim={yaw:0,pitch:0},lastSensorAim=null,flowYaw=null,lastImageChange=1,darkView=false,aimed=false;
 let conditions=window.KaiiSensing.createConditions(),rush=null,specialHold=null,radarTouch=null;
+const radarPointers=new Map();
 let shownTrace=null,lastTracePaint=performance.now(),lastAim=null,scan=window.KaiiSensing.createScan();
 // センサーを使う特別条件。怪異の本文と絵ができたら、scenes に condition を付けて登録する。
 // 登録された怪異の条件だけが働く（できていない怪異は出さず、画面でも触れない）。
-const SENSOR_CONDITIONS={northPillow:'北枕',kimon:'鬼門',hitori:'暗闇で動かす',flying:'真上で静止',kokkuri:'置いて中央に指',kagome:'振り向く',blackout:'明るい所から真っ暗',hum:'低いうなり音',mirror:'鏡に構えて静止',claps:'暗闇で手を叩く'};
+const SENSOR_CONDITIONS={unicorn:'白に一本指で静止',northPillow:'北枕',kimon:'鬼門',hitori:'暗闇で動かす',flying:'真上で静止',kokkuri:'置いて中央に指',kagome:'振り向く',blackout:'明るい所から真っ暗',hum:'低いうなり音',mirror:'鏡に構えて静止',claps:'暗闇で手を叩く'};
 const sceneForCondition=condition=>Object.keys(scenes).find(k=>scenes[k].condition===condition)||null;
 let anomaly=false,anomalyTimer=null;
 // アクセス解析（Google アナリティクス 4）。campaign.js の gaMeasurementId があり、本番のURLで開いた時だけ動く。
@@ -1036,9 +1050,21 @@ function onMotion(event){
 }
 const sensorsLive=()=>sensors.state==='on'&&performance.now()-sensors.at<1000;
 // 照準の向き：センサーの向きに、指でなぞった分（または映像の流れ）を足す。
+let aimSensor=null,aimSensorLive=false,sensorOffset={yaw:0,pitch:0};
 function currentAim(){
   const live=sensorsLive();
-  return {yaw:(live?sensors.yaw:0)+manualAim.yaw,pitch:Math.max(-80,Math.min(80,(live?sensors.pitch:0)+manualAim.pitch))};
+  if(live){
+    const next={yaw:sensors.yaw,pitch:sensors.pitch};
+    // A resumed sensor must join the existing camera/gesture coordinate frame.
+    if(!aimSensorLive&&aimSensor){
+      sensorOffset.yaw+=window.KaiiSensing.wrap180(aimSensor.yaw-next.yaw);
+      sensorOffset.pitch+=aimSensor.pitch-next.pitch;
+    }
+    aimSensor=next;
+  }
+  aimSensorLive=live;
+  // Keep the last orientation while events pause; never jump back to zero.
+  return {yaw:(aimSensor?.yaw??0)+sensorOffset.yaw+manualAim.yaw,pitch:Math.max(-80,Math.min(80,(aimSensor?.pitch??0)+sensorOffset.pitch+manualAim.pitch))};
 }
 // 指でなぞれるのは、仮の環境と、センサーが使えずに映像からも向きがわからない時（カメラなし・暗い）。
 function fingerAim(){
@@ -1123,7 +1149,7 @@ const BOOT_STEPS=[
   ['色相スペクトル解析器 展開',60],
   ['周波数分光シークエンサー 起動',120],
   ['クロノ・アナライザ 初期化',40],
-  [()=>`時相痕跡データベース 照合準備（${Object.keys(scenes).length}件）`,380],
+  [()=>`時相痕跡データベース 照合準備（${Object.values(scenes).filter(scene=>!scene.secret).length}件）`,380],
   ['観測座標 固定：現在地点 半径2m',90],
   ['時間軸ドリフト補正 ±0.000秒',200],
   ['位相同期ループ ロック',30],
@@ -1207,7 +1233,7 @@ function paintHud(){
     hudAudio.sound.forEach((v,i)=>{const bh=Math.max(1,v/max*gain*ah);a.fillRect(i*bw,ah-bh,bw-1,bh);});}
 }
 function releaseMedia() { stopMotor(true);mediaRequest++;bootHide();if(mediaStream) mediaStream.getTracks().forEach(track=>track.stop());mediaStream=null;micSource?.disconnect();analyser?.disconnect();clapAnalyser?.disconnect();micSource=null;analyser=null;clapAnalyser=null;clapSamples=null;spectrum=null;stopLocation();sensingContext?.close().catch(()=>{});sensingContext=null;$('camera').srcObject=null;$('camera').hidden=true;$('media').textContent='カメラ・マイクを使う';clearReaction(); }
-function clearReaction(){stopAnomaly();strength=0;displayedStrength=0;exploring=false;aimed=false;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;demoPoint=null;flowAim={yaw:0,pitch:0};lastSensorAim=null;radarTrace=window.KaiiSensing.createRadar();shownTrace=null;manualAim={yaw:0,pitch:0};flowYaw=null;lastImageChange=1;darkView=false;conditions=window.KaiiSensing.createConditions();rush=null;specialHold=null;lastAim=null;scan=window.KaiiSensing.createScan();lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
+function clearReaction(){radarPointers.clear();radarTouch=null;aimSensor=null;aimSensorLive=false;sensorOffset={yaw:0,pitch:0};stopAnomaly();strength=0;displayedStrength=0;exploring=false;aimed=false;previousPixels=null;previousAudio=null;lastVisualSample=0;lastAudioSample=0;demoPoint=null;flowAim={yaw:0,pitch:0};lastSensorAim=null;radarTrace=window.KaiiSensing.createRadar();shownTrace=null;manualAim={yaw:0,pitch:0};flowYaw=null;lastImageChange=1;darkView=false;conditions=window.KaiiSensing.createConditions();rush=null;specialHold=null;lastAim=null;scan=window.KaiiSensing.createScan();lockState=window.KaiiSensing.createLock();candidate=null;patternStrengths={};lastSense=performance.now();if(phase==='search')paintReaction();}
 function paintReaction(){
   const locked=lockState.locked,radar=$('radar');
   const progress=locked?1:Math.min(1,lockState.trace/lockState.required);
@@ -1222,7 +1248,7 @@ function paintReaction(){
   if($('show-numbers').checked){
     const top=Object.entries(patternStrengths).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>scenes[k].name+' '+v.toFixed(2)).join('／');
     const aim=currentAim(),f=n=>n==null?'—':Math.round(n);
-    const timers=Object.entries(conditions.timers).filter(([k,v])=>v>0&&sceneForCondition(k)).map(([k,v])=>SENSOR_CONDITIONS[k]+' '+(v/1000).toFixed(1)+'秒').join('／');
+    const timers=Object.entries(conditions.timers).filter(([k,v])=>k!=='unicorn'&&v>0&&sceneForCondition(k)).map(([k,v])=>SENSOR_CONDITIONS[k]+' '+(v/1000).toFixed(1)+'秒').join('／');
     $('debug-numbers').textContent=(top||'入力待ち')+'　探索 '+Math.round(100*progress)+'%'
       +`\nセンサー ${sensors.state}　向き ${f(((aim.yaw%360)+360)%360)}° 仰角 ${f(aim.pitch)}° 回転 ${f(sensors.rotation)}°/秒 方位 ${f(sensors.absCamera)}°${darkView?'　暗い':''}${timers?'\n'+timers:''}${sceneForCondition('mirror')?'\n鏡の認識 '+(mirror.failed?'読み込み失敗':mirror.model?'準備OK　'+(mirror.last||'—')+(performance.now()-mirror.seenAt<1500?'　★構えた人':''):mirror.loading?'読み込み中 '+Math.round((performance.now()-mirror.loadStart)/1000)+'秒':'止まると読み込み開始'):''}`;
   }
@@ -1303,13 +1329,16 @@ function senseEnvironment(){
     const met=S.updateConditions(conditions,{
       axes:live?sensors.axes:null,absolute:live&&now-sensors.absAt<1000&&sensors.absCamera!=null?{camera:sensors.absCamera,top:sensors.absTop}:null,
       rotation:live?sensors.rotation:null,acceleration:live?sensors.acceleration:null,
-      dark:!demoMode&&darkView,imageStill:lastImageChange<.01,centerTouch:!!radarTouch?.center,
+      dark:!demoMode&&darkView,imageStill:lastImageChange<.01,centerTouch:!!radarTouch?.center,singleTouch:radarPointers.size===1&&radarTouch?.pointerType==='touch',
+      whiteFraction:!demoMode&&visual?visual.whiteFraction:null,
       brightness:!demoMode&&visual?visual.brightness:null,audio:demoMode?null:audio,clapOffsets:demoMode?[]:clapOffsets,
       mirrorSeen:watchMirror(now,live?(sensors.rotation!=null&&sensors.rotation<15):lastImageChange<.03),
       yaw:live?sensors.yaw:null,flowYaw:demoMode?null:flowYaw
     },dt);
     if(met)startRush(met);
   }
+  // Reserve the observation while the secret gesture is in progress.
+  if(!rush&&conditions.timers.unicorn>0){lockState.trace=0;exploring=false;aimed=false;paintReaction();return;}
   const aim=currentAim();
   // その回にセンサーが感じた回転（映像の流れから差し引く）。点を追っている間も更新して、走査に戻った時に古い値を使わない。
   const sensorAim=sensorsLive()?{yaw:sensors.yaw,pitch:sensors.pitch}:null;
@@ -1374,7 +1403,7 @@ function senseEnvironment(){
   if(specialHold){lockState.trace=lockState.required;lockState.locked=true;lockState.hold=0;}
   else S.updateLock(lockState,strength,dt,exploring,pos.distance);
   paintReaction();
-  if(!wasLocked&&lockState.locked){if(scenes[candidate])imageFor(scenes[candidate]);lockSound();track('capture',{anomaly:scenes[candidate]?.name||'',mode:liteMode?'lite':'camera'});if($('special-test').checked||scenes[candidate]?.special||specialHold)startAnomaly();}
+  if(!wasLocked&&lockState.locked){if(scenes[candidate])imageFor(scenes[candidate]);lockSound();track('capture',{anomaly:scenes[candidate]?.name||'',mode:liteMode?'lite':'camera'});if(!scenes[candidate]?.secret&&($('special-test').checked||scenes[candidate]?.special||specialHold))startAnomaly();}
   else if(wasLocked&&!lockState.locked)stopAnomaly();
 }
 // 怪異ごとの出やすい時間帯。外れていても出るが、少しだけ弱まる（同じ雰囲気の怪異の選び分け）。
@@ -1779,7 +1808,7 @@ async function save(share=false) {
   finally{$('save').disabled=false;$('share').disabled=false;}
 }
 $('read-description').addEventListener('click',()=>{const panel=$('description-panel');panel.hidden=!panel.hidden;$('read-description').setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden)panel.scrollIntoView({behavior:reduceMotion?'instant':'smooth',block:'nearest'});});
-for(const [key,scene] of Object.entries(scenes))$('specimen').append(new Option(scene.name,key));
+for(const [key,scene] of Object.entries(scenes))if(!scene.secret)$('specimen').append(new Option(scene.name,key));
 for(const key of Object.keys(scenes))if(window.KaiiSensing.profiles[key])$('environment').append(new Option(scenes[key].name+'の場所',key));
 $('environment').append(new Option('明るい無音（何も出ない）','neutral'));
 $('start-media').addEventListener('click',()=>{liteMode=false;$('media').click();});
@@ -1819,16 +1848,26 @@ $('environment').addEventListener('change',clearReaction);
 function radarTouchAt(event){
   const rect=$('radar').getBoundingClientRect(),r=rect.width/2;
   const x=(event.clientX-rect.left-r)/r,y=(event.clientY-rect.top-r)/r;
-  return {x,y,center:Math.hypot(x,y)<=.2};
+  return {x,y,pointerType:event.pointerType,center:Math.hypot(x,y)<=.2};
 }
+// Count contacts across the whole screen, not just inside the radar.
+document.addEventListener('pointerdown',event=>{
+  if(phase==='search'){radarPointers.set(event.pointerId,{pointerType:event.pointerType});if(radarPointers.size>1){radarTouch=null;conditions.timers.unicorn=0;}}
+},true);
+for(const type of ['pointerup','pointercancel'])document.addEventListener(type,event=>{
+  radarPointers.delete(event.pointerId);conditions.timers.unicorn=0;
+},true);
 $('radar').addEventListener('pointerdown',event=>{
   if(phase!=='search')return;
-  radarTouch=radarTouchAt(event);$('radar').setPointerCapture(event.pointerId);
+  radarPointers.set(event.pointerId,radarTouchAt(event));
+  radarTouch=radarPointers.size===1?radarPointers.values().next().value:null;$('radar').setPointerCapture(event.pointerId);
   if(fingerAim()){demoDragging=true;demoPoint={x:event.clientX,y:event.clientY};}
 });
 $('radar').addEventListener('pointermove',event=>{
-  if(phase!=='search'||!radarTouch)return;
-  radarTouch=radarTouchAt(event);
+  if(phase!=='search'||!radarPointers.has(event.pointerId))return;
+  radarPointers.set(event.pointerId,radarTouchAt(event));
+  radarTouch=radarPointers.size===1?radarPointers.values().next().value:null;
+  if(!radarTouch)return;
   // 指でなぞると点がその方向へ動く（照準の向きを逆へずらす）。
   if(demoDragging&&demoPoint&&fingerAim()){
     const r=$('radar').getBoundingClientRect().width/2,A=window.KaiiSensing.AIM;
@@ -1840,7 +1879,7 @@ $('radar').addEventListener('pointermove',event=>{
 // 長押しで文字の選択・メニュー・虫めがねが出ないようにする（こっくりさんで指を当て続けるため）。
 for(const event of ['contextmenu','selectstart','dragstart'])$('radar').addEventListener(event,e=>e.preventDefault());
 $('radar').addEventListener('touchstart',e=>{if(phase==='search'&&e.cancelable)e.preventDefault();},{passive:false});
-for(const event of ['pointerup','pointercancel','lostpointercapture'])$('radar').addEventListener(event,()=>{demoDragging=false;demoPoint=null;radarTouch=null;});
+for(const event of ['pointerup','pointercancel','lostpointercapture'])$('radar').addEventListener(event,event=>{radarPointers.delete(event.pointerId);demoDragging=false;demoPoint=null;radarTouch=radarPointers.size===1?radarPointers.values().next().value:null;conditions.timers.unicorn=0;});
 $('media').addEventListener('click',async()=>{
   if(mediaStream){releaseMedia();$('media-status').textContent='背景は仮画像／仮の環境でも試せます';return;}
   if(!navigator.mediaDevices?.getUserMedia){$('media-status').textContent='カメラ・マイクを利用できません。'+FALLBACK_HINT;return;}
@@ -1883,7 +1922,7 @@ reset();
 setInterval(refreshCampaign,1000);
 requestAnimationFrame(paintTrace);
 // 確認用：センサーの特別条件をその場で成立させる（本番版では上部の作業欄ごと隠れる）。
-for(const [key,label] of Object.entries(SENSOR_CONDITIONS))if(sceneForCondition(key))$('force-condition').append(new Option(label,key));
+for(const [key,label] of Object.entries(SENSOR_CONDITIONS))if(key!=='unicorn'&&sceneForCondition(key))$('force-condition').append(new Option(label,key));
 $('force-condition').closest('label').hidden=$('force-condition').options.length<2;
 $('force-condition').addEventListener('change',()=>{
   const key=$('force-condition').value;$('force-condition').value='';
